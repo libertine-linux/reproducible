@@ -1,6 +1,7 @@
 awk	/usr/bin
 base64	/bin
 basename	/usr/bin
+busybox	/bin
 cat	/bin
 chmod	/bin
 chown	/bin

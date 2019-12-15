@@ -2,4 +2,5 @@
 output/chroot
 output/extract
 output/index
+output/qemu
 output/temp

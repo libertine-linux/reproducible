@@ -135,23 +135,15 @@ reproducible_qemu_chroot_createTemporaryFolder()
 
 reproducible_qemu_chroot_compileForMacos()
 {
-	local reproducible_qemu_chroot_compileForMacos_originalSourceFolderPath="$(pwd)/qemu"
-	local reproducible_qemu_chroot_compileForMacos_copiedSourceFolderPath="$reproducible_temporaryFolderPath"/qemu-source
-	local reproducible_qemu_chroot_compileForMacos_installPath="$reproducible_outputFolderPath"/qemu
-	local reproducible_qemu_chroot_compileForMacos_interpreterInstallPath="$reproducible_qemu_chroot_compileForMacos_installPath"/gnemul
-	local reproducible_qemu_chroot_compileForMacos_currentVersion
-	local reproducible_qemu_chroot_compileForMacos_compiledVersionFilePath="$reproducible_qemu_chroot_compileForMacos_installPath"/.qemu-version
-	local reproducible_qemu_chroot_compileForMacos_alreadyBuilt=false
-	
 	depends git cat
 	reproducible_qemu_chroot_compileForMacos_currentQemuVersion()
 	{
-		reproducible_qemu_chroot_compileForMacos_currentVersion="$(git -C "$reproducible_qemu_chroot_compileForMacos_originalSourceFolderPath" log -1 --pretty=format:%H)"
+		reproducible_qemu_chroot_compileForMacos_currentVersion="$(git -C "$reproducible_qemu_chroot_compileForMacos_sourceFolderPath" log -1 --pretty=format:%H)"
 		if [ -r "$reproducible_qemu_chroot_compileForMacos_compiledVersionFilePath" ]; then
 			if [ -f "$reproducible_qemu_chroot_compileForMacos_compiledVersionFilePath" ]; then
 				if [ -s "$reproducible_qemu_chroot_compileForMacos_compiledVersionFilePath" ]; then
 					local compiledVersion="$(cat "$reproducible_qemu_chroot_compileForMacos_compiledVersionFilePath")"
-					if [ "$compiledVersion" != "$reproducible_qemu_chroot_compileForMacos_currentVersion" ]; then
+					if [ "$compiledVersion" = "$reproducible_qemu_chroot_compileForMacos_currentVersion" ]; then
 						reproducible_qemu_chroot_compileForMacos_alreadyBuilt=true
 					fi
 				fi
@@ -165,24 +157,20 @@ reproducible_qemu_chroot_compileForMacos()
 		rm -rf "$reproducible_qemu_chroot_compileForMacos_installPath"
 	}
 	
-	reproducible_qemu_chroot_compileForMacos_copySource()
-	{
-		rm -rf "$reproducible_qemu_chroot_compileForMacos_copiedSourceFolderPath"
-		cp -a "$reproducible_qemu_chroot_compileForMacos_originalSourceFolderPath"/. "$reproducible_qemu_chroot_compileForMacos_copiedSourceFolderPath"/
-	}
-	
 	depends brew
 	reproducible_qemu_chroot_compileForMacos_installDependencies()
 	{
-		brew install qemu --only-dependencies
+		brew install qemu --only-dependencies 1>&2
 	}
 
-	depends cc c++ clang make install python3 git
+	depends cc c++ clang make install python3 git cmp sh test sed sort ld ar ranlib cat bzip2 rm mkdir
 	reproducible_qemu_chroot_compileForMacos_configureMakeAndInstall()
-	{
+	{	
+		git -C "$reproducible_qemu_chroot_compileForMacos_sourceFolderPath" clean -q -f -d -x
+			
 		local deploymentTarget='10.8'
-		cd "$reproducible_qemu_chroot_compileForMacos_copiedSourceFolderPath" 1>/dev/null 2>/dev/null
-		
+		cd "$reproducible_qemu_chroot_compileForMacos_sourceFolderPath" 1>/dev/null 2>/dev/null
+			
 			MACOSX_DEPLOYMENT_TARGET="$deploymentTarget" \
 			LIBTOOL=glibtool \
 			./configure \
@@ -213,7 +201,7 @@ reproducible_qemu_chroot_compileForMacos()
 				--disable-docs \
 				--disable-guest-agent \
 				--disable-guest-agent-msi \
-				--enable-pie \
+				--disable-pie \
 				--disable-modules \
 				--disable-debug-tcg \
 				--disable-debug-info \
@@ -301,16 +289,17 @@ reproducible_qemu_chroot_compileForMacos()
 				--disable-capstone \
 				--disable-debug-mutex \
 				--disable-libpmem \
-				--disable-xkbcommon
+				--disable-xkbcommon \
+				1>&2
 		
 			MACOSX_DEPLOYMENT_TARGET="$deploymentTarget" \
 			LIBTOOL=glibtool \
-			make V=1 install
+			make V=1 install 1>&2
 	
 		cd - 1>/dev/null 2>/dev/null
 	}
 
-	depends mkdir chmod
+	depends mkdir chmod git
 	reproducible_qemu_chroot_compileForMacos_postInstall()
 	{
 		mkdir -m 0700 -p "$reproducible_qemu_chroot_compileForMacos_interpreterInstallPath"
@@ -319,6 +308,8 @@ reproducible_qemu_chroot_compileForMacos()
 		chmod -R g-rwx,o-rwx "$reproducible_qemu_chroot_compileForMacos_installPath"
 		
 		printf '%s\n' "$reproducible_qemu_chroot_compileForMacos_currentVersion" >"$reproducible_qemu_chroot_compileForMacos_compiledVersionFilePath"
+
+		git -C "$reproducible_qemu_chroot_compileForMacos_sourceFolderPath" clean -q -f -d -x
 	}
 	
 	reproducible_qemu_chroot_compileForMacos_currentQemuVersion
@@ -326,13 +317,9 @@ reproducible_qemu_chroot_compileForMacos()
 		return 0
 	fi
 	reproducible_qemu_chroot_compileForMacos_destroyAnyInstalledVersion
-	reproducible_qemu_chroot_compileForMacos_copySource
 	reproducible_qemu_chroot_compileForMacos_installDependencies
 	reproducible_qemu_chroot_compileForMacos_configureMakeAndInstall
 	reproducible_qemu_chroot_compileForMacos_postInstall
-	
-	echo "CHECK"
-	exit 99
 }
 
 depends cat chmod cpio gzip
@@ -354,19 +341,19 @@ reproducible_qemu_chroot_makeInitFile()
 			export LANG=C.UTF-8
 			export LANGUAGE=en_US:en
 
-			mount -t proc proc /proc
-			mount -t sys sys /sys
-
-			mknod /dev/null c 1 3
-			chmod 666 /dev/null
+			busybox mount -t proc proc /proc
+			busybox mount -t sysfs none /sys
+			
+			busybox mknod /dev/null c 1 3
+			busybox chmod 666 /dev/null
 
 		EOF
 		
 		cat <<-EOF
-			mknod /dev/${reproducible_qemu_chroot_diskName} b 3 0
-			mknod /dev/${reproducible_qemu_chroot_diskName}1 b 3 1
-			mknod /dev/${reproducible_qemu_chroot_diskName}2 b 3 2
-			mknod /dev/${reproducible_qemu_chroot_diskName}3 b 3 3
+			busybox mknod /dev/${reproducible_qemu_chroot_diskName} b 3 0
+			busybox mknod /dev/${reproducible_qemu_chroot_diskName}1 b 3 1
+			busybox mknod /dev/${reproducible_qemu_chroot_diskName}2 b 3 2
+			busybox mknod /dev/${reproducible_qemu_chroot_diskName}3 b 3 3
 		EOF
 
 		local mountFromFolderPath
@@ -378,8 +365,8 @@ reproducible_qemu_chroot_makeInitFile()
 			if [ -z "$mountFromFolderPath" ]; then
 				continue
 			fi
-			printf 'mkdir -m 0755 -p %s\n' "$mountToFolderPath"
-			printf 'mount -t 9p -o trans=virtio tag%s %s/ -oversion=9p2000.L,posixacl,cache=loose\n' "$count" "$mountToFolderPath"
+			printf 'busybox mkdir -m 0755 -p %s\n' "$mountToFolderPath"
+			printf 'busybox mount -t 9p -o trans=virtio tag%s %s/ -oversion=9p2000.L,posixacl,cache=loose\n' "$count" "$mountToFolderPath"
 	
 			count=$((count + 1))
 		done <<-EOF
@@ -387,11 +374,12 @@ reproducible_qemu_chroot_makeInitFile()
 		EOF
 	
 		cat <<-'EOF'
-			exec /bin/su \
-				-p \
-				-s /bin/sh \
-				-c 'exec /su-command' \
-				currentuser
+		exec /su-command
+			# exec /bin/su \
+			# 	-p \
+			# 	-s /bin/sh \
+			# 	-c 'exec /su-command' \
+			# 	currentuser
 		EOF
 	} >"$initFilePath"
 	
@@ -413,17 +401,20 @@ depends rm
 reproducible_qemu_chroot_createEmptyDiskImage()
 {
 	rm -rf "$reproducible_qemu_chroot_diskImageFilePath"
-	/Users/raph/Documents/macos-qemu/install/bin/qemu-img create -f raw "$reproducible_qemu_chroot_diskImageFilePath" "$reproducible_qemu_chroot_diskSize" 
+	"$reproducible_qemu_chroot_compileForMacos_installPath"/bin/qemu-img create -f raw "$reproducible_qemu_chroot_diskImageFilePath" "$reproducible_qemu_chroot_diskSize" 1>&2
 }
 
 reproducible_qemu_chroot_execute()
 {
+	# Attempts to exit QEMU on Linux kernel panic; see second comment at https://unix.stackexchange.com/questions/443017/can-i-make-qemu-exit-with-failure-on-kernel-panic for a better option if the kernel support pvpanic.
 	set -- \
+		-runas "$SUDO_UID":"$SUDO_GID" \
+		-no-reboot \
 		-nographic \
 		-kernel "$reproducible_mirrorFolderPath"/vmlinuz \
 		-drive index="$reproducible_qemu_chroot_diskIndex",media=disk,snapshot=off,format=raw,file="$reproducible_qemu_chroot_diskImageFilePath" \
 		-initrd "$reproducible_qemu_chroot_initialRamdiskCpioArchiveFilePath" \
-		-append "root=/dev/$reproducible_qemu_chroot_diskName console=ttyS0" \
+		-append "root=/dev/$reproducible_qemu_chroot_diskName console=ttyS0 quiet kernel.panic=-1" \
 			-m "$reproducible_qemu_chroot_memorySize" \
 			-k en-us
 
@@ -446,7 +437,7 @@ reproducible_qemu_chroot_execute()
 		${reproducible_mount}
 	EOF
 	
-	exec /Users/raph/Documents/macos-qemu/install/bin/qemu-system-x86_64 "$@"
+	exec "$reproducible_qemu_chroot_compileForMacos_installPath"/bin/qemu-system-x86_64 "$@"
 }
 
 reproducible_qemu_chroot_main()
@@ -538,17 +529,29 @@ ${value}"
 	if [ -n "${SUDO_UID+isset}" ]; then
 		reRunAsRoot=false
 	fi
-
+	
 	local reproducible_qemu_chroot_memorySize='1G'
 	local reproducible_qemu_chroot_diskIndex='0'
 	local reproducible_qemu_chroot_diskName='hda'
 	local reproducible_qemu_chroot_diskSize='16M'
 	local reproducible_qemu_chroot_diskImageFilePath="$reproducible_temporaryFolderPath"/"$reproducible_qemu_chroot_diskName".raw.img
 	local reproducible_qemu_chroot_initialRamdiskCpioArchiveFilePath="$reproducible_temporaryFolderPath"/initramfs.cpio.gz
+
+	local reproducible_qemu_chroot_compileForMacos_installPath="$reproducible_outputFolderPath"/qemu
 	
 	if $reRunAsRoot; then
 		"$(pwd)"/alpine-linux-download --configuration "$reproducible_configurationFolderPath" --output "$reproducible_outputFolderPath"
+		
 		reproducible_qemu_chroot_createTemporaryFolder
+
+		local reproducible_qemu_chroot_compileForMacos_sourceFolderPath="$(pwd)/qemu"
+		local reproducible_qemu_chroot_compileForMacos_copiedSourceFolderPath="$reproducible_temporaryFolderPath"/qemu-source
+		local reproducible_qemu_chroot_compileForMacos_interpreterInstallPath="$reproducible_qemu_chroot_compileForMacos_installPath"/gnemul
+		local reproducible_qemu_chroot_compileForMacos_currentVersion
+		local reproducible_qemu_chroot_compileForMacos_compiledVersionFilePath="$reproducible_qemu_chroot_compileForMacos_installPath"/.qemu-version
+		local reproducible_qemu_chroot_compileForMacos_alreadyBuilt=false
+		reproducible_qemu_chroot_compileForMacos
+		
 		reproducible_createChroot
 		reproducible_createSuCommandToRunAsCurrentUser "$@"
 		reproducible_qemu_chroot_makeInitFile
