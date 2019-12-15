@@ -1,0 +1,5 @@
+.DS_STORE
+output/chroot
+output/extract
+output/index
+output/temp

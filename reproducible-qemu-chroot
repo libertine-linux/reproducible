@@ -1,0 +1,563 @@
+#!/usr/bin/env sh
+# This file is part of reproducible. It is subject to the licence terms in the COPYRIGHT file found in the top-level directory of this distribution and at https://raw.githubusercontent.com/libertine-linux/reproducible/master/COPYRIGHT. No part of reproducible, including this file, may be copied, modified, propagated, or distributed except according to the terms contained in the COPYRIGHT file.
+# Copyright © 2019 The developers of reproducible. See the COPYRIGHT file in the top-level directory of this distribution and at https://raw.githubusercontent.com/libertine-linux/reproducible/master/COPYRIGHT.
+
+
+set -e
+set -f
+set -u
+
+program_name="reproducible-qemu-chroot"
+
+_program_path_find()
+{
+	if [ "${0%/*}" = "$0" ]; then
+
+		# We've been invoked by the interpreter as, say, bash program
+		if [ -r "$0" ]; then
+			pwd -P
+		# Clutching at straws; probably run via a download, anonymous script, etc, weird execve, etc
+		else
+			printf '\n'
+		fi
+
+	else
+
+		# We've been invoked with a relative or absolute path (also when invoked via PATH in a shell)
+
+		_program_path_find_parentPath()
+		{
+			parentPath="${scriptPath%/*}"
+			if [ -z "$parentPath" ]; then
+				parentPath='/'
+			fi
+			cd "$parentPath" 1>/dev/null
+		}
+
+		# pdksh / mksh have problems with unsetting a variable that was never set...
+		if [ "${CDPATH+set}" = 'set' ]; then
+			unset CDPATH
+		fi
+
+		if command -v realpath 1>/dev/null 2>/dev/null; then
+			(
+				scriptPath="$(realpath "$0")"
+
+				_program_path_find_parentPath
+				pwd -P
+			)
+		elif command -v readlink 1>/dev/null 2>/dev/null; then
+			(
+				local recursionDepth=0
+				_program_path_resolve_symlinks_recursively()
+				{
+					local unresolvedPath="$1"
+					
+					recursionDepth=$((recursionDepth + 1))
+					
+					if [ $recursionDepth -gt 10 ]; then
+						printf '%s\n' 'Recursion to depths greater than 10 is not allowed when resolving links.'
+						return 1
+					fi
+					
+					local potentialLinkDestination="$(readlink -- "$unresolvedPath")"
+					
+					if [ -z "$potentialLinkDestination" ]; then
+						scriptPath="$unresolvedPath"
+						return 0
+					fi
+					local linkDestination="$potentialLinkDestination"
+					local parentFolderPath="${unresolvedPath%/*}"
+					
+					if [ "$parentFolderPath" = "$unresolvedPath" ]; then
+						_program_path_resolve_symlinks_recursively "$linkDestination"
+					else
+						case "$linkDestination" in
+														
+							/*)
+								_program_path_resolve_symlinks_recursively "$linkDestination"
+							;;
+							
+							*)
+								_program_path_resolve_symlinks_recursively "$parentFolderPath"/"$linkDestination"
+							;;
+							
+						esac
+					fi
+				}
+
+				scriptPath="$0"
+				_program_path_resolve_symlinks_recursively "$scriptPath"
+
+				_program_path_find_parentPath
+				pwd -P
+			)
+		else
+			# This approach will fail in corner cases where the script itself is a symlink in a path not parallel with the concrete script
+			(
+				scriptPath="$0"
+
+				_program_path_find_parentPath
+				pwd -P
+			)
+		fi
+
+	fi
+}
+
+fail()
+{
+	local exitCode="$1"
+	local message="$2"
+	
+	printf '%s:FAIL:%s\n' "$program_name" "$message" 1>&2
+	exit $exitCode
+}
+
+depends()
+{
+	local binary
+	for binary in "$@"
+	do
+		if ! command -v "$binary" 1>/dev/null 2>/dev/null; then
+			printf '%s:%s\n' "$program_name" "The binary `$binary` is not on the PATH" 1>&2
+			local EX_OSFILE=72
+			exit $EX_OSFILE
+		fi
+	done
+}
+
+depends mkdir
+reproducible_qemu_chroot_createTemporaryFolder()
+{
+	mkdir -m 0700 -p "$reproducible_temporaryFolderPath"
+}
+
+reproducible_qemu_chroot_compileForMacos()
+{
+	local reproducible_qemu_chroot_compileForMacos_originalSourceFolderPath="$(pwd)/qemu"
+	local reproducible_qemu_chroot_compileForMacos_copiedSourceFolderPath="$reproducible_temporaryFolderPath"/qemu-source
+	local reproducible_qemu_chroot_compileForMacos_installPath="$reproducible_outputFolderPath"/qemu
+	local reproducible_qemu_chroot_compileForMacos_interpreterInstallPath="$reproducible_qemu_chroot_compileForMacos_installPath"/gnemul
+	local reproducible_qemu_chroot_compileForMacos_currentVersion
+	local reproducible_qemu_chroot_compileForMacos_compiledVersionFilePath="$reproducible_qemu_chroot_compileForMacos_installPath"/.qemu-version
+	local reproducible_qemu_chroot_compileForMacos_alreadyBuilt=false
+	
+	depends git cat
+	reproducible_qemu_chroot_compileForMacos_currentQemuVersion()
+	{
+		reproducible_qemu_chroot_compileForMacos_currentVersion="$(git -C "$reproducible_qemu_chroot_compileForMacos_originalSourceFolderPath" log -1 --pretty=format:%H)"
+		if [ -r "$reproducible_qemu_chroot_compileForMacos_compiledVersionFilePath" ]; then
+			if [ -f "$reproducible_qemu_chroot_compileForMacos_compiledVersionFilePath" ]; then
+				if [ -s "$reproducible_qemu_chroot_compileForMacos_compiledVersionFilePath" ]; then
+					local compiledVersion="$(cat "$reproducible_qemu_chroot_compileForMacos_compiledVersionFilePath")"
+					if [ "$compiledVersion" != "$reproducible_qemu_chroot_compileForMacos_currentVersion" ]; then
+						reproducible_qemu_chroot_compileForMacos_alreadyBuilt=true
+					fi
+				fi
+			fi
+		fi
+	}
+	
+	depends rm
+	reproducible_qemu_chroot_compileForMacos_destroyAnyInstalledVersion()
+	{
+		rm -rf "$reproducible_qemu_chroot_compileForMacos_installPath"
+	}
+	
+	reproducible_qemu_chroot_compileForMacos_copySource()
+	{
+		rm -rf "$reproducible_qemu_chroot_compileForMacos_copiedSourceFolderPath"
+		cp -a "$reproducible_qemu_chroot_compileForMacos_originalSourceFolderPath"/. "$reproducible_qemu_chroot_compileForMacos_copiedSourceFolderPath"/
+	}
+	
+	depends brew
+	reproducible_qemu_chroot_compileForMacos_installDependencies()
+	{
+		brew install qemu --only-dependencies
+	}
+
+	depends cc c++ clang make install python3 git
+	reproducible_qemu_chroot_compileForMacos_configureMakeAndInstall()
+	{
+		local deploymentTarget='10.8'
+		cd "$reproducible_qemu_chroot_compileForMacos_copiedSourceFolderPath" 1>/dev/null 2>/dev/null
+		
+			MACOSX_DEPLOYMENT_TARGET="$deploymentTarget" \
+			LIBTOOL=glibtool \
+			./configure \
+				--prefix="$reproducible_qemu_chroot_compileForMacos_installPath" \
+				--interp-prefix="$reproducible_qemu_chroot_compileForMacos_interpreterInstallPath"/qemu-%M \
+				--target-list=x86_64-softmmu \
+				--cc=cc \
+				--host-cc=cc \
+				--cxx=c++ \
+				--objcc=clang \
+				--extra-cflags="-mmacosx-version-min=${deploymentTarget} -DNCURSES_WIDECHAR=1" \
+				--extra-cxxflags="-mmacosx-version-min=${deploymentTarget}" \
+				--extra-ldflags="-mmacosx-version-min=${deploymentTarget}" \
+				--make=make \
+				--install=install \
+				--python=python3 \
+				--smbd=/usr/sbin/samba-dot-org-smbd \
+				--with-git=git \
+				--disable-strip \
+				--disable-werror \
+				--disable-stack-protector \
+				--audio-drv-list=coreaudio \
+				--cpu=x86_64 \
+				--enable-system \
+				--disable-user \
+				--disable-linux-user \
+				--disable-bsd-user \
+				--disable-docs \
+				--disable-guest-agent \
+				--disable-guest-agent-msi \
+				--enable-pie \
+				--disable-modules \
+				--disable-debug-tcg \
+				--disable-debug-info \
+				--disable-sparse \
+				--disable-gnutls \
+				--disable-nettle \
+				--disable-gcrypt \
+				--disable-auth-pam \
+				--disable-sdl \
+				--disable-sdl-image \
+				--disable-gtk \
+				--disable-vte \
+				--enable-curses \
+				--disable-iconv \
+				--disable-vnc \
+				--disable-vnc-sasl \
+				--disable-vnc-jpeg \
+				--disable-vnc-png \
+				--enable-cocoa \
+				--disable-virtfs \
+				--disable-mpath \
+				--disable-xen \
+				--disable-xen-pci-passthrough \
+				--disable-brlapi \
+				--disable-curl \
+				--disable-membarrier \
+				--disable-fdt \
+				--disable-bluez \
+				--disable-kvm \
+				--disable-hax \
+				--disable-hvf \
+				--disable-whpx \
+				--disable-rdma \
+				--disable-pvrdma \
+				--enable-vde \
+				--disable-netmap \
+				--disable-linux-aio \
+				--disable-cap-ng \
+				--disable-attr \
+				--disable-vhost-net \
+				--disable-vhost-vsock \
+				--disable-vhost-scsi \
+				--disable-vhost-crypto \
+				--disable-vhost-kernel \
+				--disable-vhost-user \
+				--disable-spice \
+				--disable-rbd \
+				--disable-libiscsi \
+				--disable-libnfs \
+				--disable-smartcard \
+				--disable-libusb \
+				--disable-live-block-migration \
+				--disable-usb-redir \
+				--disable-lzo \
+				--disable-snappy \
+				--disable-bzip2 \
+				--disable-lzfse \
+				--disable-seccomp \
+				--enable-coroutine-pool \
+				--disable-glusterfs \
+				--disable-tpm \
+				--disable-libssh \
+				--disable-numa \
+				--disable-libxml2 \
+				--disable-tcmalloc \
+				--disable-jemalloc \
+				--disable-avx2 \
+				--disable-replication \
+				--disable-opengl \
+				--disable-virglrenderer \
+				--disable-xfsctl \
+				--disable-qom-cast-debug \
+				--enable-tools \
+				--disable-vxhs \
+				--disable-bochs \
+				--disable-cloop \
+				--disable-dmg \
+				--disable-qcow1 \
+				--disable-vdi \
+				--disable-vvfat \
+				--disable-qed \
+				--disable-parallels \
+				--disable-sheepdog \
+				--disable-crypto-afalg \
+				--disable-capstone \
+				--disable-debug-mutex \
+				--disable-libpmem \
+				--disable-xkbcommon
+		
+			MACOSX_DEPLOYMENT_TARGET="$deploymentTarget" \
+			LIBTOOL=glibtool \
+			make V=1 install
+	
+		cd - 1>/dev/null 2>/dev/null
+	}
+
+	depends mkdir chmod
+	reproducible_qemu_chroot_compileForMacos_postInstall()
+	{
+		mkdir -m 0700 -p "$reproducible_qemu_chroot_compileForMacos_interpreterInstallPath"
+		
+		# Adjust permissions.
+		chmod -R g-rwx,o-rwx "$reproducible_qemu_chroot_compileForMacos_installPath"
+		
+		printf '%s\n' "$reproducible_qemu_chroot_compileForMacos_currentVersion" >"$reproducible_qemu_chroot_compileForMacos_compiledVersionFilePath"
+	}
+	
+	reproducible_qemu_chroot_compileForMacos_currentQemuVersion
+	if $reproducible_qemu_chroot_compileForMacos_alreadyBuilt; then
+		return 0
+	fi
+	reproducible_qemu_chroot_compileForMacos_destroyAnyInstalledVersion
+	reproducible_qemu_chroot_compileForMacos_copySource
+	reproducible_qemu_chroot_compileForMacos_installDependencies
+	reproducible_qemu_chroot_compileForMacos_configureMakeAndInstall
+	reproducible_qemu_chroot_compileForMacos_postInstall
+	
+	echo "CHECK"
+	exit 99
+}
+
+depends cat chmod cpio gzip
+reproducible_qemu_chroot_makeInitFile()
+{
+	local initFilePath="$reproducible_chrootFolderPath"/init
+	{
+		cat <<-'EOF'
+			#!/bin/sh
+
+			set -e
+			set -f
+			set -u
+
+			export PATH='/usr/sbin:/sbin:/usr/bin:/bin'
+			export LOGNAME='currentuser'
+			export USER='currentuser'
+			export HOME='/home/currentuser'
+			export LANG=C.UTF-8
+			export LANGUAGE=en_US:en
+
+			mount -t proc proc /proc
+			mount -t sys sys /sys
+
+			mknod /dev/null c 1 3
+			chmod 666 /dev/null
+
+		EOF
+		
+		cat <<-EOF
+			mknod /dev/${reproducible_qemu_chroot_diskName} b 3 0
+			mknod /dev/${reproducible_qemu_chroot_diskName}1 b 3 1
+			mknod /dev/${reproducible_qemu_chroot_diskName}2 b 3 2
+			mknod /dev/${reproducible_qemu_chroot_diskName}3 b 3 3
+		EOF
+
+		local mountFromFolderPath
+		local mountToFolderPath
+		local recursiveMount
+		local count=0
+		while IFS=':' read -r mountFromFolderPath mountToFolderPath recursiveMount
+		do
+			if [ -z "$mountFromFolderPath" ]; then
+				continue
+			fi
+			printf 'mkdir -m 0755 -p %s\n' "$mountToFolderPath"
+			printf 'mount -t 9p -o trans=virtio tag%s %s/ -oversion=9p2000.L,posixacl,cache=loose\n' "$count" "$mountToFolderPath"
+	
+			count=$((count + 1))
+		done <<-EOF
+			${reproducible_mount}
+		EOF
+	
+		cat <<-'EOF'
+			exec /bin/su \
+				-p \
+				-s /bin/sh \
+				-c 'exec /su-command' \
+				currentuser
+		EOF
+	} >"$initFilePath"
+	
+	chmod 0700 "$initFilePath"
+}
+
+depends find cpio gzip
+reproducible_qemu_chroot_createInitialRamdiskCpioArchive()
+{
+	rm -rf "$reproducible_qemu_chroot_initialRamdiskCpioArchiveFilePath"
+	
+	cd "$reproducible_chrootFolderPath" 1>/dev/null 2>/dev/null
+		# TODO: -R is not supported by busybox cpio.
+		find . | cpio -o -H 'newc' -R 0:0 | gzip -c >"$reproducible_qemu_chroot_initialRamdiskCpioArchiveFilePath"
+	cd - 1>/dev/null 2>/dev/null
+}
+
+depends rm
+reproducible_qemu_chroot_createEmptyDiskImage()
+{
+	rm -rf "$reproducible_qemu_chroot_diskImageFilePath"
+	/Users/raph/Documents/macos-qemu/install/bin/qemu-img create -f raw "$reproducible_qemu_chroot_diskImageFilePath" "$reproducible_qemu_chroot_diskSize" 
+}
+
+reproducible_qemu_chroot_execute()
+{
+	set -- \
+		-nographic \
+		-kernel "$reproducible_mirrorFolderPath"/vmlinuz \
+		-drive index="$reproducible_qemu_chroot_diskIndex",media=disk,snapshot=off,format=raw,file="$reproducible_qemu_chroot_diskImageFilePath" \
+		-initrd "$reproducible_qemu_chroot_initialRamdiskCpioArchiveFilePath" \
+		-append "root=/dev/$reproducible_qemu_chroot_diskName console=ttyS0" \
+			-m "$reproducible_qemu_chroot_memorySize" \
+			-k en-us
+
+	local mountFromFolderPath
+	local mountToFolderPath
+	local recursiveMount
+	local count=0
+	while IFS=':' read -r mountFromFolderPath mountToFolderPath recursiveMount
+	do
+		if [ -z "$mountFromFolderPath" ]; then
+			continue
+		fi
+		
+		set -- "$@" \
+			-fsdev local,id="id${count}",path="$mountFromFolderPath",security_model=none \
+			-device virtio-9p-pci,fsdev="id${count}",mount_tag="tag${count}"
+		
+		count=$((count +1 ))
+	done <<-EOF
+		${reproducible_mount}
+	EOF
+	
+	exec /Users/raph/Documents/macos-qemu/install/bin/qemu-system-x86_64 "$@"
+}
+
+reproducible_qemu_chroot_main()
+{
+	cd "$(_program_path_find)" 1>/dev/null 2>/dev/null
+
+	. "$(pwd)"/reproducible.functions.sh
+
+	local environment_parseCommandLineArguments_message="${program_name}:  Enters an Alpine Linux QEMU virtual instance.
+
+Usage: ${program_name} -h | --help
+Usage: ${program_name} [-c|--configuration /path/to/configuration/folder] [-o|--output /path/to/output/folder [-m|--mount from1:to1:recursive1,from2:to2:recursive2]]
+
+If the configuration folder path is not provided, it defaults to program_location/sample-configuration.
+
+If the output folder path is not provided, it defaults to program_location/output. The output folder path is created as necessary.
+
+The mount argument is a triplet of from folder path and to folder path and true/false for recursive mounting. It can be repeated.
+from folder path and to folder path should not contain colons or new lines.
+"
+	local reproducible_mount=""
+	_additionalArgumentsCallback()
+	{
+		case "$key" in
+			-m|--mount)
+				environment_parseCommandLineArguments_missingArgument "$@"
+				reproducible_mount="${reproducible_mount}
+${value}"
+				_additionalArgumentsCallback_shiftUp=1
+			;;
+
+			--mount=*)
+				value="${key##--mount=}"
+				reproducible_mount="${reproducible_mount}
+${value}"
+			;;
+
+			-m*)
+				environment_parseCommandLineArguments_alreadyParsed $reproducible_configurationFolderPathParsed
+				value="${key##-m}"
+				reproducible_mount="${reproducible_mount}
+${value}"
+			;;
+
+			*)
+				environment_parseCommandLineArguments_errorHelp "Unexpected argument '$key'"
+			;;
+		esac
+	}
+	_positionalArgumentsCallback()
+	{
+		if [ $# -eq 0 ]; then
+			environment_parseCommandLineArguments_errorHelp "At least one positional argument should be specified (an absolute path to a binary to run in the chroot)"
+		fi
+	}
+	local reproducible_positionalArgumentsStartAt
+	local reproducible_configurationFolderPath="$(pwd)"/sample-configuration
+	local reproducible_outputFolderPath="$(pwd)"/output
+	reproducible_parseCommandLineArguments _additionalArgumentsCallback _positionalArgumentsCallback "$@"
+	
+	reproducible_validateCommandLineArguments
+
+	local reproducible_temporaryFolderPath
+	local reproducible_versionFilePath
+	local reproducible_packagesFilePath
+	local reproducible_busyboxStaticBinariesFilePath
+	local reproducible_mirrorFolderPath
+	local reproducible_mirrorVersionFilePath
+	local reproducible_indexFolderPath
+	local reproducible_indexVersionFilePath
+	local reproducible_packagesFolderPath
+	local reproducible_packagesVersionFilePath
+	local reproducible_extractFolderPath
+	local reproducible_extractVersionFilePath
+	local reproducible_extractPackagesFilePath
+	local reproducible_extractBusyboxStaticBinariesFilePath
+	local reproducible_majorVersion
+	local reproducible_minorVersion
+	local reproducible_revisionVersion
+	local reproducible_apkToolsVersion
+	local reproducible_versionMirror
+	local reproducible_releasesMirror
+	local reproducible_architecture
+	reproducible_setEnvironmentVariables
+
+	local reproducible_chrootFolderPath="$reproducible_outputFolderPath"/chroot
+
+	local reRunAsRoot=true
+	if [ -n "${SUDO_UID+isset}" ]; then
+		reRunAsRoot=false
+	fi
+
+	local reproducible_qemu_chroot_memorySize='1G'
+	local reproducible_qemu_chroot_diskIndex='0'
+	local reproducible_qemu_chroot_diskName='hda'
+	local reproducible_qemu_chroot_diskSize='16M'
+	local reproducible_qemu_chroot_diskImageFilePath="$reproducible_temporaryFolderPath"/"$reproducible_qemu_chroot_diskName".raw.img
+	local reproducible_qemu_chroot_initialRamdiskCpioArchiveFilePath="$reproducible_temporaryFolderPath"/initramfs.cpio.gz
+	
+	if $reRunAsRoot; then
+		"$(pwd)"/alpine-linux-download --configuration "$reproducible_configurationFolderPath" --output "$reproducible_outputFolderPath"
+		reproducible_qemu_chroot_createTemporaryFolder
+		reproducible_createChroot
+		reproducible_createSuCommandToRunAsCurrentUser "$@"
+		reproducible_qemu_chroot_makeInitFile
+		reproducible_qemu_chroot_createInitialRamdiskCpioArchive
+		reproducible_qemu_chroot_createEmptyDiskImage
+		environment_reRunAsRootIfRequired "$@"
+	fi
+	
+	reproducible_qemu_chroot_execute
+}
+
+reproducible_qemu_chroot_main "$@"
