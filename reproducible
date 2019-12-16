@@ -1,0 +1,216 @@
+#!/usr/bin/env sh
+# This file is part of reproducible. It is subject to the licence terms in the COPYRIGHT file found in the top-level directory of this distribution and at https://raw.githubusercontent.com/libertine-linux/reproducible/master/COPYRIGHT. No part of reproducible, including this file, may be copied, modified, propagated, or distributed except according to the terms contained in the COPYRIGHT file.
+# Copyright © 2019 The developers of reproducible. See the COPYRIGHT file in the top-level directory of this distribution and at https://raw.githubusercontent.com/libertine-linux/reproducible/master/COPYRIGHT.
+
+
+set -e
+set -f
+set -u
+
+program_name="reproducible"
+
+_program_path_find()
+{
+	if [ "${0%/*}" = "$0" ]; then
+
+		# We've been invoked by the interpreter as, say, bash program
+		if [ -r "$0" ]; then
+			pwd -P
+		# Clutching at straws; probably run via a download, anonymous script, etc, weird execve, etc
+		else
+			printf '\n'
+		fi
+
+	else
+
+		# We've been invoked with a relative or absolute path (also when invoked via PATH in a shell)
+
+		_program_path_find_parentPath()
+		{
+			parentPath="${scriptPath%/*}"
+			if [ -z "$parentPath" ]; then
+				parentPath='/'
+			fi
+			cd "$parentPath" 1>/dev/null
+		}
+
+		# pdksh / mksh have problems with unsetting a variable that was never set...
+		if [ "${CDPATH+set}" = 'set' ]; then
+			unset CDPATH
+		fi
+
+		if command -v realpath 1>/dev/null 2>/dev/null; then
+			(
+				scriptPath="$(realpath "$0")"
+
+				_program_path_find_parentPath
+				pwd -P
+			)
+		elif command -v readlink 1>/dev/null 2>/dev/null; then
+			(
+				local recursionDepth=0
+				_program_path_resolve_symlinks_recursively()
+				{
+					local unresolvedPath="$1"
+					
+					recursionDepth=$((recursionDepth + 1))
+					
+					if [ $recursionDepth -gt 10 ]; then
+						printf '%s\n' 'Recursion to depths greater than 10 is not allowed when resolving links.'
+						return 1
+					fi
+					
+					local potentialLinkDestination="$(readlink -- "$unresolvedPath")"
+					
+					if [ -z "$potentialLinkDestination" ]; then
+						scriptPath="$unresolvedPath"
+						return 0
+					fi
+					local linkDestination="$potentialLinkDestination"
+					local parentFolderPath="${unresolvedPath%/*}"
+					
+					if [ "$parentFolderPath" = "$unresolvedPath" ]; then
+						_program_path_resolve_symlinks_recursively "$linkDestination"
+					else
+						case "$linkDestination" in
+														
+							/*)
+								_program_path_resolve_symlinks_recursively "$linkDestination"
+							;;
+							
+							*)
+								_program_path_resolve_symlinks_recursively "$parentFolderPath"/"$linkDestination"
+							;;
+							
+						esac
+					fi
+				}
+
+				scriptPath="$0"
+				_program_path_resolve_symlinks_recursively "$scriptPath"
+
+				_program_path_find_parentPath
+				pwd -P
+			)
+		else
+			# This approach will fail in corner cases where the script itself is a symlink in a path not parallel with the concrete script
+			(
+				scriptPath="$0"
+
+				_program_path_find_parentPath
+				pwd -P
+			)
+		fi
+
+	fi
+}
+
+fail()
+{
+	local exitCode="$1"
+	local message="$2"
+	
+	printf '%s:FAIL:%s\n' "$program_name" "$message" 1>&2
+	exit $exitCode
+}
+
+depends()
+{
+	local binary
+	for binary in "$@"
+	do
+		if ! command -v "$binary" 1>/dev/null 2>/dev/null; then
+			printf '%s:%s\n' "$program_name" "The binary `$binary` is not on the PATH" 1>&2
+			local EX_OSFILE=72
+			exit $EX_OSFILE
+		fi
+	done
+}
+
+depends uname
+reproducible_chooseChrootOrQemu()
+{
+	local operatingSystem="$(uname)"
+	
+	local program
+	case "$operatingSystem" in
+		
+		Linux)
+			program=reproducible-chroot
+		;;
+		
+		Darwin)
+			program=reproducible-qemu
+		;;
+		
+		*)
+			fail "Operating System '$operatingSystem'" is not supported
+		;;
+		
+	esac
+	
+	exec ./"$program" "$@"
+}
+
+reproducible_main()
+{
+	cd "$(_program_path_find)" 1>/dev/null 2>/dev/null
+
+	. "$(pwd)"/reproducible.functions.sh
+
+	local environment_parseCommandLineArguments_message="${program_name}:  Enters an Alpine Linux chroot (Linux) or QEMU (macos) virtual instance.
+
+Usage: ${program_name} -h | --help
+Usage: ${program_name} [-c|--configuration /path/to/configuration/folder] [-o|--output /path/to/output/folder [-m|--mount from1:to1:recursive1,from2:to2:recursive2]]
+
+If the configuration folder path is not provided, it defaults to program_location/sample-configuration.
+
+If the output folder path is not provided, it defaults to program_location/output. The output folder path is created as necessary.
+
+The mount argument is a triplet of from folder path and to folder path and true/false for recursive mounting. It can be repeated.
+from folder path and to folder path should not contain colons or new lines.
+"
+	local reproducible_mount=""
+	_additionalArgumentsCallback()
+	{
+		case "$key" in
+			-m|--mount)
+				environment_parseCommandLineArguments_missingArgument "$@"
+				reproducible_mount="${reproducible_mount}
+${value}"
+				_additionalArgumentsCallback_shiftUp=1
+			;;
+
+			--mount=*)
+				value="${key##--mount=}"
+				reproducible_mount="${reproducible_mount}
+${value}"
+			;;
+
+			-m*)
+				environment_parseCommandLineArguments_alreadyParsed $reproducible_configurationFolderPathParsed
+				value="${key##-m}"
+				reproducible_mount="${reproducible_mount}
+${value}"
+			;;
+
+			*)
+				environment_parseCommandLineArguments_errorHelp "Unexpected argument '$key'"
+			;;
+		esac
+	}
+	_positionalArgumentsCallback()
+	{
+		if [ $# -eq 0 ]; then
+			environment_parseCommandLineArguments_errorHelp "At least one positional argument should be specified (an absolute path to a binary to run in the chroot)"
+		fi
+	}
+	local reproducible_positionalArgumentsStartAt
+	local reproducible_configurationFolderPath="$(pwd)"/sample-configuration
+	local reproducible_outputFolderPath="$(pwd)"/output
+	reproducible_parseCommandLineArguments _additionalArgumentsCallback _positionalArgumentsCallback "$@"
+	
+	reproducible_chooseChrootOrQemu "$@"
+}
+
+reproducible_main "$@"
