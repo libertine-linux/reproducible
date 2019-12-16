@@ -7,7 +7,7 @@ set -e
 set -f
 set -u
 
-program_name="reproducible-enter-chroot"
+program_name="reproducible-chroot"
 
 _program_path_find()
 {
@@ -128,7 +128,7 @@ depends()
 }
 
 depends env chroot
-reproducible_enter_chroot_run()
+reproducible_chroot_run()
 {
 	set -- \
 		PATH='/usr/sbin:/sbin:/usr/bin:/bin' \
@@ -153,16 +153,16 @@ reproducible_enter_chroot_run()
 	set -e
 }
 
-reproducible_enter_chroot_mountRunAndUnmount()
+reproducible_chroot_mountRunAndUnmount()
 {
-	_reproducible_enter_chroot_mountRunAndUnmount_cleanUp()
+	_reproducible_chroot_mountRunAndUnmount_cleanUp()
 	{
 		environment_recursivelyUnmountInChroot "$reproducible_chrootFolderPath"
 	}
 
 	cd "$reproducible_chrootFolderPath" 1>/dev/null 2>/dev/null
 
-		trap _reproducible_enter_chroot_mountRunAndUnmount_cleanUp EXIT HUP INT QUIT TERM
+		trap _reproducible_chroot_mountRunAndUnmount_cleanUp EXIT HUP INT QUIT TERM
 
 			local mountFromFolderPath
 			local mountToFolderPath
@@ -195,9 +195,9 @@ reproducible_enter_chroot_mountRunAndUnmount()
 			environment_recursivelyMount /dev "$reproducible_chrootFolderPath"/dev
 
 			local exitCode
-			reproducible_enter_chroot_run "$@"
+			reproducible_chroot_run "$@"
 
-			_reproducible_enter_chroot_mountRunAndUnmount_cleanUp
+			_reproducible_chroot_mountRunAndUnmount_cleanUp
 
 		trap - EXIT HUP INT QUIT TERM
 
@@ -208,7 +208,7 @@ reproducible_enter_chroot_mountRunAndUnmount()
 	cd - 1>/dev/null 2>/dev/null
 }
 
-reproducible_enter_chroot_main()
+reproducible_chroot_main()
 {
 	cd "$(_program_path_find)" 1>/dev/null 2>/dev/null
 
@@ -306,7 +306,7 @@ ${value}"
 		environment_reRunAsRootIfRequired "$@"
 	fi
 
-	reproducible_enter_chroot_mountRunAndUnmount
+	reproducible_chroot_mountRunAndUnmount
 }
 
-reproducible_enter_chroot_main "$@"
+reproducible_chroot_main "$@"
