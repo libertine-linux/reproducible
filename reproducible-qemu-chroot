@@ -393,7 +393,7 @@ reproducible_qemu_chroot_createInitialRamdiskCpioArchive()
 	
 	cd "$reproducible_chrootFolderPath" 1>/dev/null 2>/dev/null
 		# TODO: -R is not supported by busybox cpio.
-		find . | cpio -o -H 'newc' -R 0:0 | gzip -c >"$reproducible_qemu_chroot_initialRamdiskCpioArchiveFilePath"
+		find . | cpio -o -H 'newc' -R 0:0 2>/dev/null | gzip -c >"$reproducible_qemu_chroot_initialRamdiskCpioArchiveFilePath"
 	cd - 1>/dev/null 2>/dev/null
 }
 
@@ -401,7 +401,7 @@ depends rm
 reproducible_qemu_chroot_createEmptyDiskImage()
 {
 	rm -rf "$reproducible_qemu_chroot_diskImageFilePath"
-	"$reproducible_qemu_chroot_compileForMacos_installPath"/bin/qemu-img create -f raw "$reproducible_qemu_chroot_diskImageFilePath" "$reproducible_qemu_chroot_diskSize" 1>&2
+	"$reproducible_qemu_chroot_compileForMacos_installPath"/bin/qemu-img create -f raw "$reproducible_qemu_chroot_diskImageFilePath" "$reproducible_qemu_chroot_diskSize" 1>/dev/null 2>/dev/null
 }
 
 reproducible_qemu_chroot_execute()
