@@ -2,10 +2,10 @@
 # Copyright © 2019 The developers of libertine. See the COPYRIGHT file in the top-level directory of this distribution and at https://raw.githubusercontent.com/libertine-linux/libertine/master/COPYRIGHT.
 
 
-. ./functions/environment-functions.sh
+. ./functions/environment.functions.sh
 
 
-depends head
+depends head sysctl
 homebrew_setEnvironmentVariables()
 {
 	local homebrew_folderPath="$1"
@@ -57,7 +57,7 @@ homebrew_setEnvironmentVariables()
 	unset HOMEBREW_VERBOSE
 	
 	export HOMEBREW_LOGS="$homebrew_logsFolderPath"
-	export HOMEBREW_CACHE="$(pwd)"/mirror/cache
+	export HOMEBREW_CACHE="$homebrew_mirrorFolderPath"/mirror/cache
 	export HOMEBREW_BOTTLE_DOMAIN=https://homebrew.bintray.com/
 	#export HOMEBREW_ARTIFACT_DOMAIN=http://localhost:8080
 	#export HOMEBREW_NO_INSECURE_REDIRECT=1
@@ -68,6 +68,15 @@ homebrew_setEnvironmentVariables()
 	export HOMEBREW_NO_EMOJI=1
 	export HOMEBREW_CURLRC=1
 	export HOMEBREW_CURL_RETRIES=3
+	
+	case "$(sysctl -n machdep.cpu.brand_string)" in
+	
+		# Needed to make macos not use more modern CPU instructions for ancient laptops (like mine, a Penryn Dual Core) when compiling.
+		'Intel(R) Core(TM)2 Duo CPU'*)
+			export MACOSX_DEPLOYMENT_TARGET='10.8'
+		;;
+		
+	esac
 	
 	export PATH="$homebrew_binFolderPath":"$PATH"
 }
@@ -88,7 +97,7 @@ homebrew_mirrorHomebrew()
 	
 	rm -rf "$homebrew_temporaryFolderPath"
 	mkdir -m 0700 -p "$homebrew_temporaryFolderPath"
-	environment_download "$tempFolderPath" "https://github.com/Homebrew/brew/archive/${homebrew_homebrewVersion}.tar.gz"
+	environment_download "$homebrew_temporaryFolderPath" "https://github.com/Homebrew/brew/archive/${homebrew_homebrewVersion}.tar.gz"
 
 	mkdir -m 0700 -p "$homebrew_outputFolderPath"
 
@@ -136,7 +145,7 @@ homebrew_installHomebrew()
 		xcode-select --install 2>/dev/null
 	set -e
 	
-	homebrew_installedBrew search 1>/dev/null 2>/dev/null
+	homebrew_installedBrew search
 	
 	printf "$homebrew_homebrewVersion" >"$installedVersionFilePath"
 }
@@ -149,54 +158,4 @@ homebrew_readPackageInformationFile()
 	if [ -z "$homebrewBinaryName" ]; then
 		fail "Could not find binary '$wrappedBinaryName' (column 1, one-based) in homebrew package information file '$packageInformationFilePath'"
 	fi
-}
-
-depends dirname
-environment_relativePathFromSourceToDestination()
-{
-	local canonicalAbsoluteSourcePath="$1"
-	local canonicalAbsoluteDestinationPath="$2"
-	
-	local commonPrefix="$canonicalAbsoluteSourcePath"
-	local result=''
-
-	# commonPrefix does not match; go up a folder level and reduce the extent of the commonPrefix and increase the result.
-	while [ "${canonicalAbsoluteDestinationPath#"$commonPrefix"}" = "$canonicalAbsoluteDestinationPath" ]
-	do
-		commonPrefix=$(dirname "$commonPrefix")
-		if [ -z "$result" ]; then
-			result='..'
-		else
-			result='..'/"$result"
-		fi
-	done
-
-	# Root is a special case.
-	if [ "$commonPrefix" = '/' ]; then
-		result="$result"/
-	fi
-
-	local descendSuffix="${canonicalAbsoluteDestinationPatht#"$commonPrefix"}"
-	
-	if [ -n "$result "]; then
-		if [ -n "$descendSuffix" ]; then
-			relativePath="${result}${descendSuffix}"
-		fi
-	elif [ -n "$descendSuffix" ]; then
-		# Remove slash.
-		relativePath="${descendSuffix#?}"
-	else
-		relativePath="$result"
-	fi
-}
-
-depends ln
-environment_relativeSymlink()
-{	
-	local sourceFilePath="$1"
-	local destinationFilePath="$2"
-	
-	local relativePath
-	environment_relativePathFromSourceToDestination "$sourceFilePath" "$destinationFilePath"
-	ln -s "$relativePath" "$sourceFolderPath"
 }

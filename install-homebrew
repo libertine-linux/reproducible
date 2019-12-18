@@ -171,19 +171,20 @@ install_homebrew_installHomebrewPackages()
 	
 	awk '{print $3}' "$homebrew_homebrewPackagesFilePath" | sort -u >"$installedPackagesFilePath".tmp
 	local package
-	while IFS="${tab}${space}" read -r package
+	while IFS= read -r package
 	do
 		homebrew_installedBrew install "$package"
 	done <"$installedPackagesFilePath".tmp
 	rm -rf "$installedPackagesFilePath".tmp	
 }
 
-depends mkdir ln
+depends rm mkdir ln
 install_homebrew_installBinarySymlinks()
 {
+	rm -rf "$homebrew_binFolderPath"
 	mkdir -m 0700 -p "$homebrew_binFolderPath"
 	
-	environment_relativeSymlink "$homebrew_binFolderPath"/brew "$homebrew_installedFolderPath"/bin/brew
+	environment_relativeSymlink "$homebrew_binFolderPath"/brew "$(pwd)"/support/homebrew-bin-wrapper
 	
 	local tab='	'
 	local space=' '

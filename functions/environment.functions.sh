@@ -136,6 +136,31 @@ environment_makeFolderPathAbsolute()
 }
 
 depends uname awk
+environment_sha256sum()
+{
+	local filePath="$1"
+	local operatingSystem="$(uname -s)"
+	
+	case "$operatingSystem" in
+		
+		Darwin)
+			depends shasum
+			sha256="$(shasum --algorithm 256 --binary "$filePath" | awk '{print $1}')"
+		;;
+		
+		Linux)
+			depends sha256sum
+			sha256="$(sha256sum "$filePath" | awk '{print $1}')"
+		;;
+		
+		*)
+			fail "Operating system ${operatingSystem} is unsupported."
+		;;
+		
+	esac
+}
+
+depends uname awk
 environment_sha512sum()
 {
 	local filePath="$1"
@@ -180,6 +205,23 @@ environment_download()
 }
 
 depends head awk
+environment_downloadWithSha256Hash()
+{
+	local folder="$1"
+	local url="$2"
+	local expectedSha256="$3"
+	
+	environment_download "$folder" "$url"
+	
+	local sha256
+	environment_sha256sum "$downloadedFile"
+	
+	if [ "$sha256" != "$expectedSha256" ]; then
+		fail "URL when downloaded was expected to have SHA-256 hash $expectedSha256 but actually had hash $sha256."
+	fi
+}
+
+depends head awk
 environment_downloadWithSha512Hash()
 {
 	local folder="$1"
@@ -196,6 +238,26 @@ environment_downloadWithSha512Hash()
 	fi
 }
 
+environment_dependsOnSpecificBinaries()
+{
+	local binaryAbsolutePath
+	for binaryAbsolutePath in "$@"
+	do
+		if [ ! -f "$binaryAbsolutePath" ]; then
+			fail "Binary '${binaryAbsolutePath}' is not a file"
+		fi
+		if [ ! -r "$binaryAbsolutePath" ]; then
+			fail "Binary '${binaryAbsolutePath}' is not readable"
+		fi
+		if [ ! -x "$binaryAbsolutePath" ]; then
+			fail "Binary '${binaryAbsolutePath}' is not executable"
+		fi
+		if [ ! -s "$binaryAbsolutePath" ]; then
+			fail "Binary '${binaryAbsolutePath}' is empty"
+		fi
+	done
+}
+
 environment_tac()
 {
 	if command -v tac 1>/dev/null 2>/dev/null; then
@@ -205,4 +267,54 @@ environment_tac()
 		depends tail
 		tail -r -- "$@"
 	fi
+}
+
+depends dirname
+environment_relativePathFromSourceToDestination()
+{
+	local canonicalAbsoluteSourcePath="$1"
+	local canonicalAbsoluteDestinationPath="$2"
+	
+	local commonPrefix="$canonicalAbsoluteSourcePath"
+	local result=''
+
+	# commonPrefix does not match; go up a folder level and reduce the extent of the commonPrefix and increase the result.
+	while [ "${canonicalAbsoluteDestinationPath#"$commonPrefix"}" = "$canonicalAbsoluteDestinationPath" ]
+	do
+		commonPrefix="$(dirname "$commonPrefix")"
+		if [ -z "$result" ]; then
+			result='..'
+		else
+			result='..'/"$result"
+		fi
+	done
+
+	# Root is a special case.
+	if [ "$commonPrefix" = '/' ]; then
+		result="$result"/
+	fi
+
+	local descendSuffix="${canonicalAbsoluteDestinationPath#"$commonPrefix"}"
+	
+	if [ -n "$result" ]; then
+		if [ -n "$descendSuffix" ]; then
+			relativePath="${result}${descendSuffix}"
+		fi
+	elif [ -n "$descendSuffix" ]; then
+		# Remove slash.
+		relativePath="${descendSuffix#?}"
+	else
+		relativePath="$result"
+	fi
+}
+
+depends ln
+environment_relativeSymlink()
+{	
+	local sourceFilePath="$1"
+	local destinationFilePath="$2"
+	
+	local relativePath
+	environment_relativePathFromSourceToDestination "$sourceFilePath" "$destinationFilePath"
+	ln -s "$relativePath" "$sourceFilePath"
 }

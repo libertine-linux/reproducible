@@ -143,6 +143,10 @@ homebrew_bin_wrapper_main()
 	
 	local wrappedBinaryName="${0##*/}"
 	
+	if [ "$wrappedBinaryName" = 'brew' ]; then
+		exec "$homebrew_installedFolderPath"/bin/brew "$@"
+	fi
+	
 	local homebrewBinaryName
 	local homebrewPackageName
 	homebrew_readPackageInformationFile "$wrappedBinaryName"
