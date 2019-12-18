@@ -107,11 +107,10 @@ _program_path_find()
 
 fail()
 {
-	local exitCode="$1"
-	local message="$2"
+	local message="$1"
 	
 	printf '%s:FAIL:%s\n' "$program_name" "$message" 1>&2
-	exit $exitCode
+	exit 1
 }
 
 depends()
