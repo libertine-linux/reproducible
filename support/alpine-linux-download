@@ -741,7 +741,7 @@ alpine_linux_download_main()
 {
 	cd "$(_program_path_find)"/.. 1>/dev/null 2>/dev/null
 
-	. "$(pwd)"/functions/reproducible.functions.sh
+	. "$(pwd)"/functions/reproducible.functions
 
 	local environment_parseCommandLineArguments_message="${program_name}:  Downloads and caches an Alpine Linux kernel, initramfs and packages for a basic known build environment.
 

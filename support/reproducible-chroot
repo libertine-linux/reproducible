@@ -212,7 +212,7 @@ reproducible_chroot_main()
 {
 	cd "$(_program_path_find)"/.. 1>/dev/null 2>/dev/null
 
-	. "$(pwd)"/functions/reproducible.functions.sh
+	. "$(pwd)"/functions/reproducible.functions
 
 	local environment_parseCommandLineArguments_message="${program_name}:  Enters an Alpine Linux chroot.
 
@@ -291,9 +291,8 @@ ${value}"
 	local reproducible_versionMirror
 	local reproducible_releasesMirror
 	local reproducible_architecture
+	local reproducible_chrootFolderPath
 	reproducible_setEnvironmentVariables
-
-	local reproducible_chrootFolderPath="$reproducible_outputFolderPath"/chroot
 
 	local reRunAsRoot=true
 

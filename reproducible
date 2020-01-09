@@ -155,7 +155,7 @@ reproducible_main()
 {
 	cd "$(_program_path_find)" 1>/dev/null 2>/dev/null
 
-	. "$(pwd)"/functions/reproducible.functions.sh
+	. "$(pwd)"/functions/reproducible.functions
 
 	local environment_parseCommandLineArguments_message="${program_name}:  Enters an Alpine Linux chroot (Linux) or QEMU (macos) virtual instance.
 

@@ -1,7 +1,6 @@
-# Create 3 ext2 disks, mount on osxfuse at same time as Linux.
-# Use rsync to keep them up to date.
-#osxfuse
-#e2fsprogs
-#ext2fuse
-genext2fs
+# Newer version supports --chown option.
+rsync
+e2fsprogs
+osxfuse
+ext2fuse
 #qemu

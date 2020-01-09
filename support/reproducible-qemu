@@ -127,11 +127,111 @@ depends()
 	done
 }
 
+depends mkdir
 reproducible_qemu_generateExt2FileSystem()
 {
+	local reproducible_qemu
+	reproducible_qemu_qemuFolderPath="$reproducible_outputFolderPath"/qemu
+	mkdir -m 0700 -p "$reproducible_qemu"
+	
+	reproducible_qemu_disk0FilePath="$reproducible_qemu_qemuFolderPath"/disk${reproducible_qemu_disk0Index}.ext2.raw.img
+	if [ ! -f "$reproducible_qemu_disk0FilePath" ]; then
+		qemu-img create -f raw "$reproducible_qemu_disk0FilePath" "$reproducible_qemu_disk0Size" 1>/dev/null 2>/dev/null
+		mke2fs -b 1024 -j -L "$reproducible_qemu_disk0Name" -o Linux -q -t ext2 -U "$reproducible_qemu_disk0Uuid" -F "$reproducible_qemu_disk0FilePath"
+	fi
+	
+	reproducible_qemu_disk0MountFolderPath="$reproducible_qemu_qemuFolderPath"/disk0
+	if [ ! -d "$reproducible_qemu_disk0MountFolderPath" ]; then
+		mkdir -m 0700 -p "$reproducible_qemu_disk0MountFolderPath"
+	fi
+	# https://github.com/osxfuse/osxfuse/wiki/Ext
+	# TODO: Check if already mounted.
+	fuse-ext2 "$reproducible_qemu_disk0FilePath" "$reproducible_qemu_disk0MountFolderPath" -o force,noappledouble,noapplexattr,volname="Reproducible QEMU Disk ${reproducible_qemu_disk0Index}"
+	
+	reproducible_qemu_unmountDisk0()
+	{
+		fusermount -u "$reproducible_qemu_disk0MountFolderPath"
+	}
+	trap _reproducible_qemu_unmountDisk0 EXIT SIGTERM
+	# unmount
+	# 
+	
+	# osxfuse options:  noappledouble noapplexattr nobrowse volname="Reproducible QEMU Disk ${reproducible_qemu_disk0Index}"
+	# mount
+	#     sudo sed -e 's/OPTIONS="auto_xattr,defer_permissions"/OPTIONS="auto_xattr,defer_permissions,rw+"/' -i.orig /System/Library/Filesystems/fuse-ext2.fs/fuse-ext2.util
+	
+	local mountFromFolderPath
+	local mountToFolderPath
+	local recursiveMount
+	local count=0
+	while IFS=':' read -r mountFromFolderPath mountToFolderPath recursiveMount
+	do
+		if [ -z "$mountFromFolderPath" ]; then
+			continue
+		fi
+		
+		# --chown, but requires rsync 3.1.0 and root permission.
+		
+		local toFolder="$mountToFolderPath"
+		
+		rsync --quiet --recursive --links --perms --times --executability --sparse --delete --delete-excluded --delete-after --numeric-ids --chmod=D0700,Fg-rwx,Fo-rwx "$mountFromFolderPath"/ 
+		
+		set -- "$@" \
+			-fsdev local,id="id${count}",path="$mountFromFolderPath",security_model=none \
+			-device virtio-9p-pci,fsdev="id${count}",mount_tag="tag${count}"
+		
+		count=$((count + 1))
+	done <<-EOF
+		${reproducible_mount}
+	EOF
+	
+	
 	Create ext2 image files
 		for each mount; estimate mount size using du for the mount path
-		
+	
+	
+	
+	
+
+
+		# We can create a non-partitioned file system very easily afer qemu-img:-
+		# /usr/local/opt/e2fsprogs/sbin/mke2fs -b 1024 -j -L "${reproducible_qemu_disk0Name}" -o Linux -q -t ext4 -U d2c4a813-877e-44d1-8b3b-0b32139d7ee6 -F "$reproducible_qemu_disk0MountFolderPath"
+		# Sadly, Alpine Linux DOES NOT build in the ext4 module, so it needs to be present on the initramfs along with modprobe. Perhaps include modloop?
+		# We can bundle read-only mounts (/mount, /configuration) as part of the cpio; we'd need to optimize this with some caching, otherwise the rebuilds are horrible.
+	
+		# OPTION 2: Use Apple HPFS+ and DMGs
+		# hdiutil create -quiet -size 512m -layout MBRSPUD -fs 'Case-sensitive HFS+' -type UDIF -nospotlight -noanyowners -uid 0 -gid 0 -mode 755 -volname "${reproducible_qemu_disk0Name}" "${reproducible_qemu_disk0Name}".dmg
+		# can also specify -attach
+	
+		# OPTION 1: Copy read-only mounts into CPIO, Make an ext4 disk image ONCE, Use ext4fuse to read it readonly.
+		# We will need to unpack modloop and modprobe the ext4 module
+		#  Modloop
+		#   https://superuser.com/questions/1290314/what-is-modloop-option-in-alpine
+		#
+		#   Read-only ext4 partition mounting
+		#    ext4fuse hda.raw.img ./ext4 -o allow_other
+		#    umount ./ext4
+		#
+		#.  -o[ffset] <bytes>	skip <bytes> at start of <dest>.  - we could install modloop to root of disk partition; another option is to put tarballs on a raw disk partition, then use dd to extract them alonf with a basic index table at the root of the partition!
+		# unsquashfs -d ./root -q - -no-xattrs
+	
+		# Another option: Use an overlay filesystem with the squashfs file system
+	
+		# Mount your squashfs.file to /fm or somewhere else first.
+		# Prepare a writable filesystem with 2 directories in it, say /to and /temp. prepare another writable directory /fin for the merged results. Mount them together as an overlayfs to your system ---
+		#
+		# mount -t overlay -o lowerdir=/fm,upperdir=/to,workdir=/temp overlay /fin
+		# Now you can add/modify files in /fin. Once everything done, you can mksquashfs /fin to a new squashfs file,
+		#
+		# mksquashfs /fin newfile; umount /fin
+	
+	
+		# Use file command to detect if disk has been formatted.
+		# Extracting modloop requires unsquashfs, which isn't that common. We can pass the whole of Alpine Linux's modloop inside the initramfs.
+	
+		# NFS (not SAMBA as it lacks Unix file attributes)
+	
+	
 		
 }
 
@@ -204,8 +304,8 @@ reproducible_qemu_createInitialRamdiskCpioArchive()
 depends rm
 reproducible_qemu_createEmptyDiskImage()
 {
-	rm -rf "$reproducible_qemu_diskImageFilePath"
-	"$reproducible_qemu_compileForMacos_installPath"/bin/qemu-img create -f raw "$reproducible_qemu_diskImageFilePath" "$reproducible_qemu_diskSize" 1>/dev/null 2>/dev/null
+	rm -rf "$reproducible_qemu_disk0MountFolderPath"
+	"$reproducible_qemu_compileForMacos_installPath"/bin/qemu-img create -f raw "$reproducible_qemu_disk0MountFolderPath" "$reproducible_qemu_disk0Size" 1>/dev/null 2>/dev/null
 }
 
 reproducible_qemu_execute()
@@ -216,9 +316,9 @@ reproducible_qemu_execute()
 		-no-reboot \
 		-nographic \
 		-kernel "$reproducible_mirrorFolderPath"/vmlinuz \
-		-drive index="$reproducible_qemu_diskIndex",media=disk,snapshot=off,format=raw,file="$reproducible_qemu_diskImageFilePath" \
+		-drive index="$reproducible_qemu_disk0Index",media=disk,snapshot=off,format=raw,file="$reproducible_qemu_disk0FilePath" \
 		-initrd "$reproducible_qemu_initialRamdiskCpioArchiveFilePath" \
-		-append "root=/dev/$reproducible_qemu_diskName console=ttyS0 quiet kernel.panic=-1" \
+		-append "root=/dev/$reproducible_qemu_disk0Name console=ttyS0 quiet kernel.panic=-1" \
 			-m "$reproducible_qemu_memorySize" \
 			-k en-us
 
@@ -248,7 +348,7 @@ reproducible_qemu_main()
 {
 	cd "$(_program_path_find)"/.. 1>/dev/null 2>/dev/null
 
-	. "$(pwd)"/functions/reproducible.functions.sh
+	. "$(pwd)"/functions/reproducible.functions
 
 	local environment_parseCommandLineArguments_message="${program_name}:  Enters an Alpine Linux QEMU virtual instance.
 
@@ -327,9 +427,8 @@ ${value}"
 	local reproducible_versionMirror
 	local reproducible_releasesMirror
 	local reproducible_architecture
+	local reproducible_chrootFolderPath
 	reproducible_setEnvironmentVariables
-
-	local reproducible_chrootFolderPath="$reproducible_outputFolderPath"/chroot
 
 	local reRunAsRoot=true
 	if [ -n "${SUDO_UID+isset}" ]; then
@@ -340,12 +439,15 @@ ${value}"
 		"$(pwd)"/reproducible-macports/repoducible-port-list
 		export PATH="$(pwd)"/reproducible-macports.conf/bin:"$(pwd)"/reproducible-macports.conf/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 	fi
-	
+
 	local reproducible_qemu_memorySize='1G'
-	local reproducible_qemu_diskIndex='0'
-	local reproducible_qemu_diskName='hda'
-	local reproducible_qemu_diskSize='16M'
-	local reproducible_qemu_diskImageFilePath="$reproducible_temporaryFolderPath"/"$reproducible_qemu_diskName".raw.img
+	
+	local reproducible_qemu_disk0Uuid='d2c4a813-877e-44d1-8b3b-0b32139d7ee6'
+	local reproducible_qemu_disk0Index='0'
+	local reproducible_qemu_disk0Name='hda'
+	local reproducible_qemu_disk0Size='1G'
+	local reproducible_qemu_disk0MountFolderPath
+	local reproducible_qemu_disk0FilePath
 	local reproducible_qemu_initialRamdiskCpioArchiveFilePath="$reproducible_temporaryFolderPath"/initramfs.cpio.gz
 	
 	if $reRunAsRoot; then
@@ -360,45 +462,6 @@ ${value}"
 	fi
 	
 	reproducible_qemu_execute
-
-	# We can create a non-partitioned file system very easily afer qemu-img:-
-	# /usr/local/opt/e2fsprogs/sbin/mke2fs -b 1024 -j -L "${reproducible_qemu_diskName}" -o Linux -q -t ext4 -U d2c4a813-877e-44d1-8b3b-0b32139d7ee6 -F "$reproducible_qemu_diskImageFilePath"
-	# Sadly, Alpine Linux DOES NOT build in the ext4 module, so it needs to be present on the initramfs along with modprobe. Perhaps include modloop?
-	# We can bundle read-only mounts (/mount, /configuration) as part of the cpio; we'd need to optimize this with some caching, otherwise the rebuilds are horrible.
-	
-	# OPTION 2: Use Apple HPFS+ and DMGs
-	# hdiutil create -quiet -size 512m -layout MBRSPUD -fs 'Case-sensitive HFS+' -type UDIF -nospotlight -noanyowners -uid 0 -gid 0 -mode 755 -volname "${reproducible_qemu_diskName}" "${reproducible_qemu_diskName}".dmg
-	# can also specify -attach
-	
-	# OPTION 1: Copy read-only mounts into CPIO, Make an ext4 disk image ONCE, Use ext4fuse to read it readonly.
-	# We will need to unpack modloop and modprobe the ext4 module
-	#  Modloop
-	#   https://superuser.com/questions/1290314/what-is-modloop-option-in-alpine
-	#
-	#   Read-only ext4 partition mounting
-	#    ext4fuse hda.raw.img ./ext4 -o allow_other
-	#    umount ./ext4
-	#
-	#.  -o[ffset] <bytes>	skip <bytes> at start of <dest>.  - we could install modloop to root of disk partition; another option is to put tarballs on a raw disk partition, then use dd to extract them alonf with a basic index table at the root of the partition!
-	# unsquashfs -d ./root -q - -no-xattrs
-	
-	# Another option: Use an overlay filesystem with the squashfs file system
-	
-	# Mount your squashfs.file to /fm or somewhere else first.
-	# Prepare a writable filesystem with 2 directories in it, say /to and /temp. prepare another writable directory /fin for the merged results. Mount them together as an overlayfs to your system ---
-	#
-	# mount -t overlay -o lowerdir=/fm,upperdir=/to,workdir=/temp overlay /fin
-	# Now you can add/modify files in /fin. Once everything done, you can mksquashfs /fin to a new squashfs file,
-	#
-	# mksquashfs /fin newfile; umount /fin
-	
-	
-	# Use file command to detect if disk has been formatted.
-	# Extracting modloop requires unsquashfs, which isn't that common. We can pass the whole of Alpine Linux's modloop inside the initramfs.
-	
-	# NFS (not SAMBA as it lacks Unix file attributes)
-	
-	
 }
 
 reproducible_qemu_main "$@"

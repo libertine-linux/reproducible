@@ -1,0 +1,43 @@
+PortSystem          1.0
+
+name                osxfuse
+version             3.10.4
+categories          fuse devel
+platforms           macosx
+license             BSD APSL
+maintainers         openmaintainer
+description         A substitute OSXFuse port replacing the official one.
+long_description    ${description}
+homepage            https://osxfuse.github.io/
+
+fetch {}
+
+checksum {}
+
+extract {}
+
+configure {}
+
+build {
+	file mkdir ${workpath}/mount
+	exec hdiutil mount -readonly -mountpoint ${workpath}/mount ${filespath}/osxfuse-${version}.dmg
+	exec sudo -p "Install FUSE as root user - please enter %u's password: " installer -pkg "${workpath}/mount/FUSE for macOS.pkg" -target /
+	exec hdiutil unmount ${workpath}/mount
+}
+
+destroot {
+	file mkdir ${destroot}${prefix}/include
+	file link -symbolic ${destroot}${prefix}/include/osxfuse /usr/local/include/osxfuse
+	
+	file mkdir ${destroot}${prefix}/lib
+	file link -symbolic ${destroot}${prefix}/lib/libosxfuse.2.dylib /usr/local/lib/libosxfuse.2.dylib
+	file link -symbolic ${destroot}${prefix}/lib/libosxfuse.dylib /usr/local/lib/libosxfuse.dylib
+	file link -symbolic ${destroot}${prefix}/lib/libosxfuse.la /usr/local/lib/libosxfuse.la
+	file link -symbolic ${destroot}${prefix}/lib/libosxfuse_i64.2.dylib /usr/local/lib/libosxfuse_i64.2.dylib
+	file link -symbolic ${destroot}${prefix}/lib/libosxfuse_i64.dylib /usr/local/lib/libosxfuse_i64.dylib
+	file link -symbolic ${destroot}${prefix}/lib/libosxfuse_i64.la /usr/local/lib/libosxfuse_i64.la
+	
+	file mkdir ${destroot}${prefix}/lib/pkconfig
+	file copy /usr/local/lib/pkgconfig/fuse.pc ${destroot}${prefix}/lib/pkconfig/fuse.pc
+	file copy /usr/local/lib/pkgconfig/osxfuse.pc ${destroot}${prefix}/lib/pkconfig/osxfuse.pc
+}
