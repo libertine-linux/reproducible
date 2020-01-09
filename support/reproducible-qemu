@@ -127,215 +127,12 @@ depends()
 	done
 }
 
-depends mkdir
-reproducible_qemu_createTemporaryFolder()
+reproducible_qemu_generateExt2FileSystem()
 {
-	mkdir -m 0700 -p "$reproducible_temporaryFolderPath"
-}
-
-reproducible_qemu_compileForMacos()
-{
-	depends git cat
-	reproducible_qemu_compileForMacos_currentQemuVersion()
-	{
-		reproducible_qemu_compileForMacos_currentVersion="$(git -C "$reproducible_qemu_compileForMacos_sourceFolderPath" log -1 --pretty=format:%H)"
-		if [ -r "$reproducible_qemu_compileForMacos_compiledVersionFilePath" ]; then
-			if [ -f "$reproducible_qemu_compileForMacos_compiledVersionFilePath" ]; then
-				if [ -s "$reproducible_qemu_compileForMacos_compiledVersionFilePath" ]; then
-					local compiledVersion="$(cat "$reproducible_qemu_compileForMacos_compiledVersionFilePath")"
-					if [ "$compiledVersion" = "$reproducible_qemu_compileForMacos_compiledVersionFilePathcompileForMacos_currentVersion" ]; then
-						reproducible_qemu_compileForMacos_alreadyBuilt=true
-					fi
-				fi
-			fi
-		fi
-	}
-	
-	depends rm
-	reproducible_qemu_compileForMacos_destroyAnyInstalledVersion()
-	{
-		rm -rf "$reproducible_qemu_compileForMacos_installPath"
-	}
-	
-	depends brew
-	reproducible_qemu_compileForMacos_installExt4Programs()
-	{
-		brew install e2fsprogs
-		brew cask install osxfuse
-		brew install ext4fuse
-	}
-	
-	reproducible_qemu_compileForMacos_installSquashfsPrograms()
-	{
-		brew install squashfs
-		brew install squashfuse
-	}
-	
-	depends brew
-	reproducible_qemu_compileForMacos_installDependencies()
-	{
-		brew install qemu --only-dependencies 1>&2
-	}
-
-	depends cc c++ clang make install python3 git cmp sh test sed sort ld ar ranlib cat bzip2 rm mkdir
-	reproducible_qemu_compileForMacos_configureMakeAndInstall()
-	{	
-		git -C "$reproducible_qemu_compileForMacos_sourceFolderPath" clean -q -f -d -x
-			
-		local deploymentTarget='10.8'
-		cd "$reproducible_qemu_compileForMacos_sourceFolderPath" 1>/dev/null 2>/dev/null
-			
-			MACOSX_DEPLOYMENT_TARGET="$deploymentTarget" \
-			LIBTOOL=glibtool \
-			./configure \
-				--prefix="$reproducible_qemu_compileForMacos_installPath" \
-				--interp-prefix="$reproducible_qemu_compileForMacos_interpreterInstallPath"/qemu-%M \
-				--target-list=x86_64-softmmu \
-				--cc=cc \
-				--host-cc=cc \
-				--cxx=c++ \
-				--objcc=clang \
-				--extra-cflags="-mmacosx-version-min=${deploymentTarget} -DNCURSES_WIDECHAR=1" \
-				--extra-cxxflags="-mmacosx-version-min=${deploymentTarget}" \
-				--extra-ldflags="-mmacosx-version-min=${deploymentTarget}" \
-				--make=make \
-				--install=install \
-				--python=python3 \
-				--smbd=/usr/sbin/samba-dot-org-smbd \
-				--with-git=git \
-				--disable-strip \
-				--disable-werror \
-				--disable-stack-protector \
-				--audio-drv-list=coreaudio \
-				--cpu=x86_64 \
-				--enable-system \
-				--disable-user \
-				--disable-linux-user \
-				--disable-bsd-user \
-				--disable-docs \
-				--disable-guest-agent \
-				--disable-guest-agent-msi \
-				--disable-pie \
-				--disable-modules \
-				--disable-debug-tcg \
-				--disable-debug-info \
-				--disable-sparse \
-				--disable-gnutls \
-				--disable-nettle \
-				--disable-gcrypt \
-				--disable-auth-pam \
-				--disable-sdl \
-				--disable-sdl-image \
-				--disable-gtk \
-				--disable-vte \
-				--enable-curses \
-				--disable-iconv \
-				--disable-vnc \
-				--disable-vnc-sasl \
-				--disable-vnc-jpeg \
-				--disable-vnc-png \
-				--enable-cocoa \
-				--disable-virtfs \
-				--disable-mpath \
-				--disable-xen \
-				--disable-xen-pci-passthrough \
-				--disable-brlapi \
-				--disable-curl \
-				--disable-membarrier \
-				--disable-fdt \
-				--disable-bluez \
-				--disable-kvm \
-				--disable-hax \
-				--disable-hvf \
-				--disable-whpx \
-				--disable-rdma \
-				--disable-pvrdma \
-				--enable-vde \
-				--disable-netmap \
-				--disable-linux-aio \
-				--disable-cap-ng \
-				--disable-attr \
-				--disable-vhost-net \
-				--disable-vhost-vsock \
-				--disable-vhost-scsi \
-				--disable-vhost-crypto \
-				--disable-vhost-kernel \
-				--disable-vhost-user \
-				--disable-spice \
-				--disable-rbd \
-				--disable-libiscsi \
-				--disable-libnfs \
-				--disable-smartcard \
-				--disable-libusb \
-				--disable-live-block-migration \
-				--disable-usb-redir \
-				--disable-lzo \
-				--disable-snappy \
-				--disable-bzip2 \
-				--disable-lzfse \
-				--disable-seccomp \
-				--enable-coroutine-pool \
-				--disable-glusterfs \
-				--disable-tpm \
-				--disable-libssh \
-				--disable-numa \
-				--disable-libxml2 \
-				--disable-tcmalloc \
-				--disable-jemalloc \
-				--disable-avx2 \
-				--disable-replication \
-				--disable-opengl \
-				--disable-virglrenderer \
-				--disable-xfsctl \
-				--disable-qom-cast-debug \
-				--enable-tools \
-				--disable-vxhs \
-				--disable-bochs \
-				--disable-cloop \
-				--enable-dmg \
-				--disable-qcow1 \
-				--disable-vdi \
-				--disable-vvfat \
-				--disable-qed \
-				--disable-parallels \
-				--disable-sheepdog \
-				--disable-crypto-afalg \
-				--disable-capstone \
-				--disable-debug-mutex \
-				--disable-libpmem \
-				--disable-xkbcommon \
-				1>&2
+	Create ext2 image files
+		for each mount; estimate mount size using du for the mount path
 		
-			MACOSX_DEPLOYMENT_TARGET="$deploymentTarget" \
-			LIBTOOL=glibtool \
-			make V=1 install 1>&2
-	
-		cd - 1>/dev/null 2>/dev/null
-	}
-
-	depends mkdir chmod git
-	reproducible_qemu_compileForMacos_postInstall()
-	{
-		mkdir -m 0700 -p "$reproducible_qemu_compileForMacos_interpreterInstallPath"
 		
-		# Adjust permissions.
-		chmod -R g-rwx,o-rwx "$reproducible_qemu_compileForMacos_installPath"
-		
-		printf '%s\n' "$reproducible_qemu_compileForMacos_currentVersion" >"$reproducible_qemu_compileForMacos_compiledVersionFilePath"
-
-		git -C "$reproducible_qemu_compileForMacos_sourceFolderPath" clean -q -f -d -x
-	}
-	
-	reproducible_qemu_compileForMacos_currentQemuVersion
-	if $reproducible_qemu_compileForMacos_alreadyBuilt; then
-		return 0
-	fi
-	reproducible_qemu_compileForMacos_destroyAnyInstalledVersion
-	reproducible_qemu_compileForMacos_installExt4Programs
-	reproducible_qemu_compileForMacos_installSquashfsPrograms
-	reproducible_qemu_compileForMacos_installDependencies
-	reproducible_qemu_compileForMacos_configureMakeAndInstall
-	reproducible_qemu_compileForMacos_postInstall
 }
 
 depends cat chmod cpio gzip
@@ -356,22 +153,14 @@ reproducible_qemu_makeInitFile()
 			export HOME='/home/currentuser'
 			export LANG=C.UTF-8
 			export LANGUAGE=en_US:en
-
-			busybox mount -t proc proc /proc
-			busybox mount -t sysfs none /sys
 			
-			busybox mknod /dev/null c 1 3
-			busybox chmod 666 /dev/null
-
+			busybox mount -t proc -o noexec,nosuid,nodev proc /proc
+			busybox mount -t sysfs -o noexec,nosuid,nodev sysfs /sys
+			busybox mount -t devtmpfs -o exec,nosuid,mode=0755,size=2M devtmpfs /dev
+			busybox mount -t devpts -o noexec,nosuid,mode=0620,gid=5 devpts /dev/pts
+			busybox mount -t tmpfs -o noexec,nosuid,nodev shm /dev/shm
 		EOF
 		
-		cat <<-EOF
-			busybox mknod /dev/${reproducible_qemu_diskName} b 3 0
-			busybox mknod /dev/${reproducible_qemu_diskName}1 b 3 1
-			busybox mknod /dev/${reproducible_qemu_diskName}2 b 3 2
-			busybox mknod /dev/${reproducible_qemu_diskName}3 b 3 3
-		EOF
-
 		local mountFromFolderPath
 		local mountToFolderPath
 		local recursiveMount
@@ -390,12 +179,11 @@ reproducible_qemu_makeInitFile()
 		EOF
 	
 		cat <<-'EOF'
-		exec /su-command
-			# exec /bin/su \
-			# 	-p \
-			# 	-s /bin/sh \
-			# 	-c 'exec /su-command' \
-			# 	currentuser
+			exec busybox su \
+				-p \
+				-s /bin/sh \
+				-c 'exec /su-command' \
+				currentuser
 		EOF
 	} >"$initFilePath"
 	
@@ -526,10 +314,12 @@ ${value}"
 	local reproducible_indexVersionFilePath
 	local reproducible_packagesFolderPath
 	local reproducible_packagesVersionFilePath
-	local reproducible_extractFolderPath
-	local reproducible_extractVersionFilePath
-	local reproducible_extractPackagesFilePath
-	local reproducible_extractBusyboxStaticBinariesFilePath
+	local reproducible_extractedPackagesFolderPath
+	local reproducible_extractedPackagesVersionFilePath
+	local reproducible_extractedPackagesPackagesFilePath
+	local reproducible_extractedPackagesBusyboxStaticBinariesFilePath
+	local reproducible_extractedInitramfsFolderPath
+	local reproducible_extractedInitramfsVersionFilePath
 	local reproducible_majorVersion
 	local reproducible_minorVersion
 	local reproducible_revisionVersion
@@ -546,27 +336,20 @@ ${value}"
 		reRunAsRoot=false
 	fi
 	
+	if [ "$(uname)" = 'Darwin' ]; then
+		"$(pwd)"/reproducible-macports/repoducible-port-list
+		export PATH="$(pwd)"/reproducible-macports.conf/bin:"$(pwd)"/reproducible-macports.conf/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+	fi
+	
 	local reproducible_qemu_memorySize='1G'
 	local reproducible_qemu_diskIndex='0'
 	local reproducible_qemu_diskName='hda'
 	local reproducible_qemu_diskSize='16M'
 	local reproducible_qemu_diskImageFilePath="$reproducible_temporaryFolderPath"/"$reproducible_qemu_diskName".raw.img
 	local reproducible_qemu_initialRamdiskCpioArchiveFilePath="$reproducible_temporaryFolderPath"/initramfs.cpio.gz
-
-	local reproducible_qemu_compileForMacos_installPath="$reproducible_outputFolderPath"/qemu
 	
 	if $reRunAsRoot; then
 		"$(pwd)"/support/alpine-linux-download --configuration "$reproducible_configurationFolderPath" --output "$reproducible_outputFolderPath"
-		
-		reproducible_qemu_createTemporaryFolder
-
-		local reproducible_qemu_compileForMacos_sourceFolderPath="$(pwd)/qemu"
-		local reproducible_qemu_compileForMacos_copiedSourceFolderPath="$reproducible_temporaryFolderPath"/qemu-source
-		local reproducible_qemu_compileForMacos_interpreterInstallPath="$reproducible_qemu_compileForMacos_installPath"/gnemul
-		local reproducible_qemu_compileForMacos_currentVersion
-		local reproducible_qemu_compileForMacos_compiledVersionFilePath="$reproducible_qemu_compileForMacos_installPath"/.qemu-version
-		local reproducible_qemu_compileForMacos_alreadyBuilt=false
-		reproducible_qemu_compileForMacos
 		
 		reproducible_createChroot
 		reproducible_createSuCommandToRunAsCurrentUser "$@"
@@ -601,13 +384,19 @@ ${value}"
 	
 	# Another option: Use an overlay filesystem with the squashfs file system
 	
-	# Mmount your squashfs.file to /fm or somewhere else first.
+	# Mount your squashfs.file to /fm or somewhere else first.
 	# Prepare a writable filesystem with 2 directories in it, say /to and /temp. prepare another writable directory /fin for the merged results. Mount them together as an overlayfs to your system ---
 	#
 	# mount -t overlay -o lowerdir=/fm,upperdir=/to,workdir=/temp overlay /fin
 	# Now you can add/modify files in /fin. Once everything done, you can mksquashfs /fin to a new squashfs file,
 	#
 	# mksquashfs /fin newfile; umount /fin
+	
+	
+	# Use file command to detect if disk has been formatted.
+	# Extracting modloop requires unsquashfs, which isn't that common. We can pass the whole of Alpine Linux's modloop inside the initramfs.
+	
+	# NFS (not SAMBA as it lacks Unix file attributes)
 	
 	
 }

@@ -13,33 +13,13 @@ Reprducible tries hard to avoid the need to connect to the internet except for i
 
 ## Mac OS
 
-On Mac OS, Reproducible also manages a local (not per user) homebrew installation, where it uses a known, good version of homebrew and adds homebrew packaged binaries (and the `brew` binary) to the `PATH` (the binaries are present in `sample-configuration/homebrew-binaries-to-packages`). From a build wrapper shell script `source` the program `install-homebrew`, eg
-
-```bash
-export homebrew_configurationFolderPath='/path/to/alternative/to/sample-configuration'
-export homebrew_outputFolderPath='/path/to/output'
-. /path/to/reproducible/repository/support/install-homebrew
-```
+On Mac OS, Reproducible also manages a local (not per user) reproducible (also thus versioned) MacPorts installation suitable for checking in to git.
 
 
 ## Configuration
 
 Configuration is stored using line delimited, tab-separated test files in a folder, typically `configuration`. A working example is in the `sample-configuration`.
 If configuration files are changed that Reproducible destroys and then downloads, unpacks or installs as necessary, but tries hard to use cached data where possible.
-
-
-### `homebrew-binaries-to-packages`
-
-This is a three column list as follows:-
-
-```
-binary-name-to-use-in-path	binary-name-installed-by-homebrew	homebrew-package-name-containing-binary
-```
-
-To use your own configuration for homebrew, specify the environment variable `homebrew_configurationFolderPath`.
-
-To specify a different location for homebrew's output, specify the environment variable `homebrew_outputFolderPath`.
-
 
 
 ## License

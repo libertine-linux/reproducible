@@ -107,11 +107,10 @@ _program_path_find()
 
 fail()
 {
-	local exitCode="$1"
-	local message="$2"
+	local message="$1"
 	
 	printf '%s:FAIL:%s\n' "$program_name" "$message" 1>&2
-	exit $exitCode
+	exit 1
 }
 
 depends()
@@ -172,7 +171,8 @@ alpine_linux_download_prepare()
 		fi
 	}
 
-	_alpine_linux_download_prepare_rebuild "$reproducible_extractFolderPath" true true
+	_alpine_linux_download_prepare_rebuild "$reproducible_extractedInitramfsFolderPath" false false
+	_alpine_linux_download_prepare_rebuild "$reproducible_extractedPackagesFolderPath" true true
 	_alpine_linux_download_prepare_rebuild "$reproducible_packagesFolderPath" true false
 	_alpine_linux_download_prepare_rebuild "$reproducible_indexFolderPath" false false
 	_alpine_linux_download_prepare_rebuild "$reproducible_mirrorFolderPath" false false
@@ -606,7 +606,7 @@ alpine_linux_download_extractApk()
 
 	local apkFileName="${apkName}-${apkVersion}.apk"
 
-	tar -x -f "$reproducible_packagesFolderPath"/"$apkFileName" -C "$reproducible_extractFolderPath" 2>/dev/null
+	tar -x -f "$reproducible_packagesFolderPath"/"$apkFileName" -C "$reproducible_extractedPackagesFolderPath" 2>/dev/null
 }
 
 depends cp
@@ -660,7 +660,7 @@ alpine_linux_download_downloadApkPackages()
 depends rm mkdir ln chmod cp
 alpine_linux_download_extractApks()
 {
-	if reproducible_cachedPackages "$reproducible_extractFolderPath"; then
+	if reproducible_cachedPackages "$reproducible_extractedPackagesFolderPath"; then
 		return 0
 	fi
 
@@ -673,10 +673,10 @@ alpine_linux_download_extractApks()
 	done <"$reproducible_packagesFolderPath"/packages-to-install-and-in-installation-order
 
 	# Clean up
-	rm "$reproducible_extractFolderPath"/.PKGINFO
+	rm "$reproducible_extractedPackagesFolderPath"/.PKGINFO
 	set +f
-		rm "$reproducible_extractFolderPath"/.SIGN.*
-		rm -rf "$reproducible_extractFolderPath"/.post-* "$reproducible_extractFolderPath"/.trigger
+		rm "$reproducible_extractedPackagesFolderPath"/.SIGN.*
+		rm -rf "$reproducible_extractedPackagesFolderPath"/.post-* "$reproducible_extractedPackagesFolderPath"/.trigger
 	set -f
 
 	# Assumes busybox-static is one of the packages.
@@ -698,25 +698,42 @@ alpine_linux_download_extractApks()
 			;;
 			
 			*)
-				# https://man.openbsd.org/sysexits.3
-				local EX_SOFTWARE=70
-				fail $EX_SOFTWARE "Unknown folder '${folder}' for binary '$binary'"
+				fail "Unknown folder '${folder}' for binary '$binary'"
 			;;
 
 		esac
-		if [ ! -d "${reproducible_extractFolderPath}${folder}" ]; then
-			mkdir -m 0700 -p "${reproducible_extractFolderPath}${folder}"
+		if [ ! -d "${reproducible_extractedPackagesFolderPath}${folder}" ]; then
+			mkdir -m 0700 -p "${reproducible_extractedPackagesFolderPath}${folder}"
 		fi
-		ln -s "$symlinkSource" "${reproducible_extractFolderPath}${folder}/${binary}"
+		ln -s "$symlinkSource" "${reproducible_extractedPackagesFolderPath}${folder}/${binary}"
 
 	done <"$reproducible_busyboxStaticBinariesFilePath"
 
 	# Adjust permissions.
-	chmod -R g-rwx,o-rwx "$reproducible_extractFolderPath"
+	chmod -R g-rwx,o-rwx "$reproducible_extractedPackagesFolderPath"
 
-	cp "$reproducible_versionFilePath" "$reproducible_extractVersionFilePath"
-	cp "$reproducible_packagesFilePath" "$reproducible_extractPackagesFilePath"
-	cp "$reproducible_busyboxStaticBinariesFilePath" "$reproducible_extractBusyboxStaticBinariesFilePath"
+	cp "$reproducible_versionFilePath" "$reproducible_extractedPackagesVersionFilePath"
+	cp "$reproducible_packagesFilePath" "$reproducible_extractedPackagesPackagesFilePath"
+	cp "$reproducible_busyboxStaticBinariesFilePath" "$reproducible_extractedPackagesBusyboxStaticBinariesFilePath"
+}
+
+depends rm mkdir gunzip cpio
+alpine_linux_download_extractInitramfs()
+{
+	if reproducible_cachedVersion "$reproducible_extractedInitramfsVersionFilePath"; then
+		return 0
+	fi
+	
+	rm -rf "$reproducible_extractedInitramfsFolderPath"
+	mkdir -m 0700 -p "$reproducible_extractedInitramfsFolderPath"
+	
+	cd "$reproducible_extractedInitramfsFolderPath" 1>/dev/null 2>/dev/null
+	
+		gunzip -c -k "$reproducible_mirrorFolderPath"/initramfs | cpio -i 
+	
+	cd - 1>/dev/null 2>/dev/null
+
+	cp "$reproducible_versionFilePath" "$reproducible_extractedInitramfsVersionFilePath"
 }
 
 depends rm cp
@@ -762,10 +779,12 @@ If the output folder path is not provided, it defaults to program_location/outpu
 	local reproducible_indexVersionFilePath
 	local reproducible_packagesFolderPath
 	local reproducible_packagesVersionFilePath
-	local reproducible_extractFolderPath
-	local reproducible_extractVersionFilePath
-	local reproducible_extractPackagesFilePath
-	local reproducible_extractBusyboxStaticBinariesFilePath
+	local reproducible_extractedPackagesFolderPath
+	local reproducible_extractedPackagesVersionFilePath
+	local reproducible_extractedPackagesPackagesFilePath
+	local reproducible_extractedPackagesBusyboxStaticBinariesFilePath
+	local reproducible_extractedInitramfsFolderPath
+	local reproducible_extractedInitramfsVersionFilePath
 	local reproducible_majorVersion
 	local reproducible_minorVersion
 	local reproducible_revisionVersion
@@ -781,6 +800,8 @@ If the output folder path is not provided, it defaults to program_location/outpu
 	reproducible_netbootFolderName
 
 	alpine_linux_download_downloadMirror
+	
+	alpine_linux_download_extractInitramfs
 
 	alpine_linux_download_indexApks
 

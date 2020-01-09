@@ -204,10 +204,13 @@ reproducible_setEnvironmentVariables()
 	reproducible_packagesVersionFilePath="$reproducible_packagesFolderPath"/.alpine-linux.version
 	reproducible_packagesPackagesFilePath="$reproducible_packagesFolderPath"/.alpine-linux.packages
 
-	reproducible_extractFolderPath="$reproducible_outputFolderPath"/extract
-	reproducible_extractVersionFilePath="$reproducible_extractFolderPath"/.alpine-linux.version
-	reproducible_extractPackagesFilePath="$reproducible_extractFolderPath"/.alpine-linux.packages
-	reproducible_extractBusyboxStaticBinariesFilePath="$reproducible_extractFolderPath"/.alpine-linux.busybox-static-binaries
+	reproducible_extractedPackagesFolderPath="$reproducible_outputFolderPath"/extracted-packages
+	reproducible_extractedPackagesVersionFilePath="$reproducible_extractedPackagesFolderPath"/.alpine-linux.version
+	reproducible_extractedPackagesPackagesFilePath="$reproducible_extractedPackagesFolderPath"/.alpine-linux.packages
+	reproducible_extractedPackagesBusyboxStaticBinariesFilePath="$reproducible_extractedPackagesFolderPath"/.alpine-linux.busybox-static-binaries
+
+	reproducible_extractedInitramfsFolderPath="$reproducible_outputFolderPath"/extracted-initramfs
+	reproducible_extractedInitramfsVersionFilePath="$reproducible_extractedInitramfsFolderPath"/.alpine-linux.version
 
 	reproducible_mirror=https://alpine.global.ssl.fastly.net/alpine
 
@@ -279,7 +282,7 @@ depends cp rm
 reproducible_createChroot_copyExtract()
 {
 	rm -rf "$reproducible_chrootFolderPath"
-	cp -a "$reproducible_extractFolderPath"/. "$reproducible_chrootFolderPath"/
+	cp -a "$reproducible_extractedPackagesFolderPath"/. "$reproducible_chrootFolderPath"/
 	set +f
 		rm -rf "$reproducible_chrootFolderPath"/.alpine-linux.*
 	set -f
@@ -326,6 +329,12 @@ reproducible_createChroot_createBarebonesEtcPasswd()
 	} >"$reproducible_chrootFolderPath"/etc/passwd
 }
 
+depends ln
+reproducible_createChroot_createEtcMtab()
+{
+	ln -s /proc/mounts "$reproducible_chrootFolderPath"/etc/mtab
+}
+
 depends cp rm mkdir
 reproducible_createChroot()
 {
@@ -334,6 +343,8 @@ reproducible_createChroot()
 	reproducible_createChroot_makeCoreFolders
 
 	reproducible_createChroot_createBarebonesEtcPasswd
+	
+	reproducible_createChroot_createEtcMtab
 }
 
 depends cat chmod

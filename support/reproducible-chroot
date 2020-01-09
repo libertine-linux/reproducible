@@ -278,10 +278,12 @@ ${value}"
 	local reproducible_indexVersionFilePath
 	local reproducible_packagesFolderPath
 	local reproducible_packagesVersionFilePath
-	local reproducible_extractFolderPath
-	local reproducible_extractVersionFilePath
-	local reproducible_extractPackagesFilePath
-	local reproducible_extractBusyboxStaticBinariesFilePath
+	local reproducible_extractedPackagesFolderPath
+	local reproducible_extractedPackagesVersionFilePath
+	local reproducible_extractedPackagesPackagesFilePath
+	local reproducible_extractedPackagesBusyboxStaticBinariesFilePath
+	local reproducible_extractedInitramfsFolderPath
+	local reproducible_extractedInitramfsVersionFilePath
 	local reproducible_majorVersion
 	local reproducible_minorVersion
 	local reproducible_revisionVersion

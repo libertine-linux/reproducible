@@ -1,3 +1,3 @@
-[submodule "qemu"]
-	path = qemu
-	url = https://github.com/libertine-linux-clones/qemu
+[submodule "reproducible-macports"]
+	path = reproducible-macports
+	url = https://github.com/raphaelcohn/reproducible-macports.git
