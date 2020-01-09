@@ -3,4 +3,4 @@ rsync
 e2fsprogs
 osxfuse
 ext2fuse
-#qemu
+qemu

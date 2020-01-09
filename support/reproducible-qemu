@@ -144,13 +144,12 @@ reproducible_qemu_generateExt2FileSystem()
 	if [ ! -d "$reproducible_qemu_disk0MountFolderPath" ]; then
 		mkdir -m 0700 -p "$reproducible_qemu_disk0MountFolderPath"
 	fi
-	# https://github.com/osxfuse/osxfuse/wiki/Ext
 	# TODO: Check if already mounted.
-	fuse-ext2 "$reproducible_qemu_disk0FilePath" "$reproducible_qemu_disk0MountFolderPath" -o force,noappledouble,noapplexattr,volname="Reproducible QEMU Disk ${reproducible_qemu_disk0Index}"
+	ext2fuse "$reproducible_qemu_disk0FilePath" "$reproducible_qemu_disk0MountFolderPath" -o force,noappledouble,noapplexattr,volname="Reproducible QEMU Disk ${reproducible_qemu_disk0Index}"
 	
 	reproducible_qemu_unmountDisk0()
 	{
-		fusermount -u "$reproducible_qemu_disk0MountFolderPath"
+		umount "$reproducible_qemu_disk0MountFolderPath"
 	}
 	trap _reproducible_qemu_unmountDisk0 EXIT SIGTERM
 	# unmount
