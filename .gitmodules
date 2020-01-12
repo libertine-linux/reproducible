@@ -1,3 +1,6 @@
 [submodule "reproducible-macports"]
 	path = reproducible-macports
 	url = https://github.com/raphaelcohn/reproducible-macports.git
+[submodule "reproducible-macports.conf/local-ports/fuse/fuse-ext2/files/fuse-ext2"]
+	path = reproducible-macports.conf/local-ports/fuse/fuse-ext2/files/fuse-ext2
+	url = https://github.com/alperakcan/fuse-ext2.git

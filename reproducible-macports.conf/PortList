@@ -2,5 +2,5 @@
 rsync
 e2fsprogs
 osxfuse
-ext2fuse
+fuse-ext2
 qemu

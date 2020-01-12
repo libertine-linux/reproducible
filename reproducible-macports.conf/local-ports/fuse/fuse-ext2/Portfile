@@ -1,0 +1,35 @@
+PortSystem          1.0
+
+name                fuse-ext2
+version             0.0.10+2019-06-26
+revision			0
+epoch				0
+categories          fuse devel
+platforms           macosx
+license             BSD APSL
+maintainers         openmaintainer
+description         fuse-ext2, which isn't the same things as ext2fuse.
+long_description    ${description}
+homepage            https://github.com/alperakcan/fuse-ext2/
+
+depends_build       port:pkgconfig port:m4 port:autoconf port:automake port:libtool
+depends_lib         port:libcomerr port:e2fsprogs port:osxfuse
+
+worksrcdir			fuse-ext2
+
+fetch {}
+
+checksum {}
+
+extract {
+	copy ${filespath}/fuse-ext2 ${workpath}
+	reinplace -W ${worksrcpath} -- "/SUBDIRS += tools/d" Makefile.am
+	system "cd ${worksrcpath} && ./autogen.sh"
+}
+
+configure.cflags-append		-idirafter${prefix}/include/osxfuse/
+
+post-destroot {
+	file delete ${destroot}${prefix}/sbin/e2label
+	file delete ${destroot}${prefix}/sbin/mke2fs
+}

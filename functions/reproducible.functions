@@ -152,46 +152,48 @@ reproducible_setEnvironmentVariables()
 {
 	reproducible_temporaryFolderPath="$reproducible_outputFolderPath"/temp
 
+	local EX_CONFIG=78
+
 	reproducible_versionFilePath="$reproducible_configurationFolderPath"/alpine-linux.version
 	if [ ! -e "$reproducible_versionFilePath" ]; then
-		fail "The configuration file '$reproducible_versionFilePath' does not exist"
+		fail $EX_CONFIG "The configuration file '$reproducible_versionFilePath' does not exist"
 	fi
 	if [ ! -f "$reproducible_versionFilePath" ]; then
-		fail "The configuration file '$reproducible_versionFilePath' is not a file"
+		fail $EX_CONFIG "The configuration file '$reproducible_versionFilePath' is not a file"
 	fi
 	if [ ! -r "$reproducible_versionFilePath" ]; then
-		fail "The configuration file '$reproducible_versionFilePath' is not a readable file"
+		fail $EX_CONFIG "The configuration file '$reproducible_versionFilePath' is not a readable file"
 	fi
 	if [ ! -s "$reproducible_versionFilePath" ]; then
-		fail "The configuration file '$reproducible_versionFilePath' is not a readable file with content"
+		fail $EX_CONFIG "The configuration file '$reproducible_versionFilePath' is not a readable file with content"
 	fi
 
 	reproducible_packagesFilePath="$reproducible_configurationFolderPath"/alpine-linux.packages
 	if [ ! -e "$reproducible_packagesFilePath" ]; then
-		fail "The configuration file '$reproducible_packagesFilePath' does not exist"
+		fail $EX_CONFIG "The configuration file '$reproducible_packagesFilePath' does not exist"
 	fi
 	if [ ! -f "$reproducible_packagesFilePath" ]; then
-		fail "The configuration file '$reproducible_packagesFilePath' is not a file"
+		fail $EX_CONFIG "The configuration file '$reproducible_packagesFilePath' is not a file"
 	fi
 	if [ ! -r "$reproducible_packagesFilePath" ]; then
-		fail "The configuration file '$reproducible_packagesFilePath' is not a readable file"
+		fail $EX_CONFIG "The configuration file '$reproducible_packagesFilePath' is not a readable file"
 	fi
 	if [ ! -s "$reproducible_packagesFilePath" ]; then
-		fail "The configuration file '$reproducible_packagesFilePath' is not a readable file with content"
+		fail $EX_CONFIG "The configuration file '$reproducible_packagesFilePath' is not a readable file with content"
 	fi
 
 	reproducible_busyboxStaticBinariesFilePath="$reproducible_configurationFolderPath"/alpine-linux.busybox-static-binaries
 	if [ ! -e "$reproducible_busyboxStaticBinariesFilePath" ]; then
-		fail "The configuration file '$reproducible_busyboxStaticBinariesFilePath' does not exist"
+		fail $EX_CONFIG "The configuration file '$reproducible_busyboxStaticBinariesFilePath' does not exist"
 	fi
 	if [ ! -f "$reproducible_busyboxStaticBinariesFilePath" ]; then
-		fail "The configuration file '$reproducible_busyboxStaticBinariesFilePath' is not a file"
+		fail $EX_CONFIG "The configuration file '$reproducible_busyboxStaticBinariesFilePath' is not a file"
 	fi
 	if [ ! -r "$reproducible_busyboxStaticBinariesFilePath" ]; then
-		fail "The configuration file '$reproducible_busyboxStaticBinariesFilePath' is not a readable file"
+		fail $EX_CONFIG "The configuration file '$reproducible_busyboxStaticBinariesFilePath' is not a readable file"
 	fi
 	if [ ! -s "$reproducible_busyboxStaticBinariesFilePath" ]; then
-		fail "The configuration file '$reproducible_busyboxStaticBinariesFilePath' is not a readable file with content"
+		fail $EX_CONFIG "The configuration file '$reproducible_busyboxStaticBinariesFilePath' is not a readable file with content"
 	fi
 
 	reproducible_mirrorFolderPath="$reproducible_outputFolderPath"/mirror
@@ -377,3 +379,32 @@ reproducible_createSuCommandToRunAsCurrentUser()
 	chmod 0700 "$reproducible_chrootFolderPath"/su-command
 }
 
+depends uname
+reproducible_macports()
+{
+	if [ "$(uname)" = 'Darwin' ]; then
+		"$(pwd)"/reproducible-macports/reproducible-port-list
+		export PATH="$(pwd)"/reproducible-macports.conf/root/bin:"$(pwd)"/reproducible-macports.conf/root/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+	fi
+}
+
+reproducible_runNotAsRoot()
+{
+	local callback="$1"
+	shift 1
+	
+	local reRunAsRoot=true
+	if [ -n "${SUDO_UID+isset}" ]; then
+		reRunAsRoot=false
+	fi
+	
+	if $reRunAsRoot; then
+		"$(pwd)"/support/alpine-linux-download --configuration "$reproducible_configurationFolderPath" --output "$reproducible_outputFolderPath"
+		reproducible_createChroot
+		reproducible_createSuCommandToRunAsCurrentUser "$@"
+		
+		${callback}
+		
+		environment_reRunAsRootIfRequired "$@"
+	fi
+}

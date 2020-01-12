@@ -37,7 +37,7 @@ destroot {
 	file link -symbolic ${destroot}${prefix}/lib/libosxfuse_i64.dylib /usr/local/lib/libosxfuse_i64.dylib
 	file link -symbolic ${destroot}${prefix}/lib/libosxfuse_i64.la /usr/local/lib/libosxfuse_i64.la
 	
-	file mkdir ${destroot}${prefix}/lib/pkconfig
-	file copy /usr/local/lib/pkgconfig/fuse.pc ${destroot}${prefix}/lib/pkconfig/fuse.pc
-	file copy /usr/local/lib/pkgconfig/osxfuse.pc ${destroot}${prefix}/lib/pkconfig/osxfuse.pc
+	file mkdir ${destroot}${prefix}/lib/pkgconfig
+	file copy /usr/local/lib/pkgconfig/fuse.pc ${destroot}${prefix}/lib/pkgconfig/fuse.pc
+	file copy /usr/local/lib/pkgconfig/osxfuse.pc ${destroot}${prefix}/lib/pkgconfig/osxfuse.pc
 }

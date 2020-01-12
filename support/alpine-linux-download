@@ -107,10 +107,11 @@ _program_path_find()
 
 fail()
 {
-	local message="$1"
+	local exitCode="$1"
+	local message="$2"
 	
 	printf '%s:FAIL:%s\n' "$program_name" "$message" 1>&2
-	exit 1
+	exit $exitCode
 }
 
 depends()
@@ -698,7 +699,8 @@ alpine_linux_download_extractApks()
 			;;
 			
 			*)
-				fail "Unknown folder '${folder}' for binary '$binary'"
+				local EX_SOFTWARE=70
+				fail $EX_SOFTWARE "Unknown folder '${folder}' for binary '$binary'"
 			;;
 
 		esac
@@ -729,7 +731,7 @@ alpine_linux_download_extractInitramfs()
 	
 	cd "$reproducible_extractedInitramfsFolderPath" 1>/dev/null 2>/dev/null
 	
-		gunzip -c -k "$reproducible_mirrorFolderPath"/initramfs | cpio -i 
+		gunzip -c -k "$reproducible_mirrorFolderPath"/initramfs | cpio -i 2>/dev/null
 	
 	cd - 1>/dev/null 2>/dev/null
 

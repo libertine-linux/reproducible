@@ -180,7 +180,8 @@ reproducible_chroot_mountRunAndUnmount()
 					;;
 
 					*)
-						fail 1 "Invalid mount data"
+						local EX_USAGE=64
+						fail $EX_USAGE "Invalid mount data"
 					;;
 
 				esac
@@ -208,12 +209,8 @@ reproducible_chroot_mountRunAndUnmount()
 	cd - 1>/dev/null 2>/dev/null
 }
 
-reproducible_chroot_main()
+reproducible_chroot_commandLineArguments()
 {
-	cd "$(_program_path_find)"/.. 1>/dev/null 2>/dev/null
-
-	. "$(pwd)"/functions/reproducible.functions
-
 	local environment_parseCommandLineArguments_message="${program_name}:  Enters an Alpine Linux chroot.
 
 Usage: ${program_name} -h | --help
@@ -255,16 +252,29 @@ ${value}"
 			;;
 		esac
 	}
+	
 	_positionalArgumentsCallback()
 	{
 		if [ $# -eq 0 ]; then
 			environment_parseCommandLineArguments_errorHelp "At least one positional argument should be specified (an absolute path to a binary to run in the chroot)"
 		fi
 	}
-	local reproducible_positionalArgumentsStartAt
-	local reproducible_configurationFolderPath="$(pwd)"/sample-configuration
-	local reproducible_outputFolderPath="$(pwd)"/output
+	
+	reproducible_configurationFolderPath="$(pwd)"/sample-configuration
+	reproducible_outputFolderPath="$(pwd)"/output
 	reproducible_parseCommandLineArguments _additionalArgumentsCallback _positionalArgumentsCallback "$@"
+}
+
+reproducible_chroot_main()
+{
+	cd "$(_program_path_find)"/.. 1>/dev/null 2>/dev/null
+
+	. "$(pwd)"/functions/reproducible.functions
+
+	local reproducible_positionalArgumentsStartAt
+	local reproducible_configurationFolderPath
+	local reproducible_outputFolderPath
+	reproducible_chroot_commandLineArguments "$@"
 	
 	reproducible_validateCommandLineArguments
 
@@ -293,19 +303,14 @@ ${value}"
 	local reproducible_architecture
 	local reproducible_chrootFolderPath
 	reproducible_setEnvironmentVariables
-
-	local reRunAsRoot=true
-
-	if [ -n "${SUDO_UID+isset}" ]; then
-		reRunAsRoot=false
-	fi
 	
-	if $reRunAsRoot; then
-		"$(pwd)"/support/alpine-linux-download --configuration "$reproducible_configurationFolderPath" --output "$reproducible_outputFolderPath"
-		reproducible_createChroot
-		reproducible_createSuCommandToRunAsCurrentUser "$@"
-		environment_reRunAsRootIfRequired "$@"
-	fi
+	reproducible_macports
+	
+	_callback()
+	{
+		:
+	}
+	reproducible_runNotAsRoot _callback "$@"
 
 	reproducible_chroot_mountRunAndUnmount
 }

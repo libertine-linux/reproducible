@@ -154,7 +154,8 @@ environment_sha256sum()
 		;;
 		
 		*)
-			fail "Operating system ${operatingSystem} is unsupported."
+			local EX_UNAVAILABLE=69
+			fail $EX_UNAVAILABLE "Operating system ${operatingSystem} is unsupported."
 		;;
 		
 	esac
@@ -179,7 +180,8 @@ environment_sha512sum()
 		;;
 		
 		*)
-			fail "Operating system ${operatingSystem} is unsupported."
+			local EX_UNAVAILABLE=69
+			fail $EX_UNAVAILABLE "Operating system ${operatingSystem} is unsupported."
 		;;
 		
 	esac
@@ -200,7 +202,8 @@ environment_download()
 	set -e
 	
 	if [ $exitCode -ne 0 ]; then
-		fail "Failed to download from $url because of curl code $exitCode."
+		local EX_IOERR=74
+		fail $EX_IOERR "Failed to download from $url because of curl code $exitCode."
 	fi
 }
 
@@ -217,7 +220,8 @@ environment_downloadWithSha256Hash()
 	environment_sha256sum "$downloadedFile"
 	
 	if [ "$sha256" != "$expectedSha256" ]; then
-		fail "URL when downloaded was expected to have SHA-256 hash $expectedSha256 but actually had hash $sha256."
+		local EX_DATAERR=65
+		fail $EX_DATAERR "URL when downloaded was expected to have SHA-256 hash $expectedSha256 but actually had hash $sha256."
 	fi
 }
 
@@ -234,26 +238,29 @@ environment_downloadWithSha512Hash()
 	environment_sha512sum "$downloadedFile"
 	
 	if [ "$sha512" != "$expectedSha512" ]; then
-		fail "URL when downloaded was expected to have SHA-512 hash $expectedSha512 but actually had hash $sha512."
+		local EX_DATAERR=65
+		fail $EX_DATAERR "URL when downloaded was expected to have SHA-512 hash $expectedSha512 but actually had hash $sha512."
 	fi
 }
 
 environment_dependsOnSpecificBinaries()
 {
+	local EX_OSFILE=72
+	
 	local binaryAbsolutePath
 	for binaryAbsolutePath in "$@"
 	do
 		if [ ! -f "$binaryAbsolutePath" ]; then
-			fail "Binary '${binaryAbsolutePath}' is not a file"
+			fail $EX_OSFILE "Binary '${binaryAbsolutePath}' is not a file"
 		fi
 		if [ ! -r "$binaryAbsolutePath" ]; then
-			fail "Binary '${binaryAbsolutePath}' is not readable"
+			fail $EX_OSFILE "Binary '${binaryAbsolutePath}' is not readable"
 		fi
 		if [ ! -x "$binaryAbsolutePath" ]; then
-			fail "Binary '${binaryAbsolutePath}' is not executable"
+			fail $EX_OSFILE "Binary '${binaryAbsolutePath}' is not executable"
 		fi
 		if [ ! -s "$binaryAbsolutePath" ]; then
-			fail "Binary '${binaryAbsolutePath}' is empty"
+			fail $EX_OSFILE "Binary '${binaryAbsolutePath}' is empty"
 		fi
 	done
 }
