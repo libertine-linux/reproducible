@@ -1,0 +1,35 @@
+PortSystem          1.0
+
+name                squashfuse
+version             0.1.103
+revision			0
+epoch				0
+categories          fuse devel
+platforms           macosx
+license             BSD
+maintainers         openmaintainer
+description         squashfuse provides read-only access to SquashFS archived filesystems.
+long_description    ${description}
+homepage            https://github.com/vasi/squashfuse/
+
+depends_build       port:pkgconfig port:m4 port:autoconf port:automake port:libtool
+depends_lib         port:lzo2 port:lzma port:zlib port:lz4 port:zstd port:osxfuse
+
+worksrcdir			squashfuse
+
+fetch {}
+
+checksum {}
+
+extract {
+	copy ${filespath}/squashfuse ${workpath}
+	system "cd ${worksrcpath} && autoreconf --verbose --install --force && rm -rf autom4te.cache"
+}
+
+configure.args		--disable-demo --disable-low-level \
+					--with-fuse=${prefix} --with-fuse-include=${prefix}/include/osxfuse/fuse --with-fuse-lib=${prefix}/lib --with-fuse-soname=osxfuse \
+					--with-zlib=${prefix} \
+					--with-xz=${prefix} \
+					--with-lzo=${prefix} \
+					--with-lz4=${prefix} \
+					--with-zstd=${prefix}

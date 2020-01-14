@@ -4,3 +4,9 @@
 [submodule "reproducible-macports.conf/local-ports/fuse/fuse-ext2/files/fuse-ext2"]
 	path = reproducible-macports.conf/local-ports/fuse/fuse-ext2/files/fuse-ext2
 	url = https://github.com/alperakcan/fuse-ext2.git
+[submodule "reproducible-macports.conf/local-ports/fuse/squashfuse/files/squashfuse"]
+	path = reproducible-macports.conf/local-ports/fuse/squashfuse/files/squashfuse
+	url = https://github.com/vasi/squashfuse
+[submodule "reproducible-macports.conf/local-ports/sysutils/squashfs-tools/files/squashfs-tools"]
+	path = reproducible-macports.conf/local-ports/sysutils/squashfs-tools/files/squashfs-tools
+	url = https://github.com/plougher/squashfs-tools

@@ -282,14 +282,11 @@ reproducible_cachedBusyboxStaticBinaries()
 	return 1
 }
 
-depends cp rm
+depends mkdir rsync
 reproducible_createChroot_copyExtract()
 {
-	rm -rf "$reproducible_chrootFolderPath"
-	cp -a "$reproducible_extractedPackagesFolderPath"/. "$reproducible_chrootFolderPath"/
-	set +f
-		rm -rf "$reproducible_chrootFolderPath"/.alpine-linux.*
-	set -f
+	mkdir -m 0700 -p "$reproducible_chrootFolderPath"
+	rsync --archive --delete-after --delete-excluded --force --exclude '/.alpine-linux.*' "$reproducible_extractedPackagesFolderPath"/ "$reproducible_chrootFolderPath"/
 }
 
 depends mkdir

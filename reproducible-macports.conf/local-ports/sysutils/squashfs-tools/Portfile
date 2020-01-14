@@ -1,0 +1,39 @@
+PortSystem          1.0
+
+name                squashfs-tools
+version             0.1.103
+revision			0
+epoch				0
+categories          sysutils devel
+platforms           macosx
+license             BSD
+maintainers         openmaintainer
+description         squashfs-tools manipulate SquashFS archived filesystems.
+long_description    ${description}
+homepage            https://github.com/plougher/squashfs-tools/
+
+depends_build       port:pkgconfig port:m4 port:autoconf port:automake port:libtool
+depends_lib         port:lzo2 port:lzma port:zlib port:lz4 port:zstd port:osxfuse
+
+worksrcdir			squashfs-tools
+
+fetch {}
+
+checksum {}
+
+extract {
+	copy ${filespath}/squashfs-tools/squashfs-tools ${workpath}
+}
+
+patch.pre_args      -p2
+patchfiles			69.patch
+
+configure {}
+
+build {	
+	system "cd ${worksrcpath} && EXTRA_CFLAGS='-std=gnu89 -I${prefix}/include' EXTRA_LDFLAGS='-L${prefix}/lib' LZ4_SUPPORT=1 LZ4_DIR=${prefix} LZO_SUPPORT=1 LZO_DIR=${prefix} LZMA_XZ_SUPPORT=1 LZMA_DIR=${prefix} XZ_SUPPORT=1 XZ_DIR=${prefix} ZSTD_SUPPORT=1 ZSTD_DIR=${prefix} XATTR_SUPPORT=1 make"
+}
+
+destroot {
+	system "cd ${worksrcpath} && make INSTALL_DIR=${destroot}${prefix}/bin install"
+}

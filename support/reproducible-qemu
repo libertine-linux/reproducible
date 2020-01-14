@@ -127,137 +127,216 @@ depends()
 	done
 }
 
-depends mkdir
-reproducible_qemu_createOrUpdateDisk0WithMounts()
+# For documentation only.
+depends_provided_by_macports()
 {
-	local reproducible_qemu
-	reproducible_qemu_qemuFolderPath="$reproducible_outputFolderPath"/qemu
-	mkdir -m 0700 -p "$reproducible_qemu_qemuFolderPath"
-	
-	reproducible_qemu_disk0FilePath="$reproducible_qemu_qemuFolderPath"/disk${reproducible_qemu_disk0Index}.ext2.raw.img
-	if [ ! -f "$reproducible_qemu_disk0FilePath" ]; then
-		#  1>/dev/null 2>/dev/null
-		qemu-img create -f raw "$reproducible_qemu_disk0FilePath" "$reproducible_qemu_disk0Size"
-		mke2fs -b 1024 -j -L "$reproducible_qemu_disk0Name" -o Linux -q -t ext2 -U "$reproducible_qemu_disk0Uuid" -F "$reproducible_qemu_disk0FilePath"
-	fi
-	
-	reproducible_qemu_disk0MountFolderPath="$reproducible_qemu_qemuFolderPath"/disk0
-	if [ ! -d "$reproducible_qemu_disk0MountFolderPath" ]; then
-		mkdir -m 0700 -p "$reproducible_qemu_disk0MountFolderPath"
-	fi
-	
-	_reproducible_mountedDiskProcess=''
-	_reproducible_qemu_unmountDisk0()
-	{
-		if [ -n "$_reproducible_mountedDiskProcess" ]; then
-			kill $_reproducible_mountedDiskProcess
-		fi
-	}
-	trap _reproducible_qemu_unmountDisk0 EXIT SIGTERM
-	
-	ext2fuse "$reproducible_qemu_disk0FilePath" "$reproducible_qemu_disk0MountFolderPath" -o force,noappledouble,noapplexattr,volname="Reproducible QEMU Disk ${reproducible_qemu_disk0Index}" &
-	_reproducible_mountedDiskProcess=$!
-	
-	
-	echo "NOW CHECK mount"
-	exit 99
-	
-	# osxfuse options:  noappledouble noapplexattr nobrowse volname="Reproducible QEMU Disk ${reproducible_qemu_disk0Index}"
-	# mount
-	#     sudo sed -e 's/OPTIONS="auto_xattr,defer_permissions"/OPTIONS="auto_xattr,defer_permissions,rw+"/' -i.orig /System/Library/Filesystems/fuse-ext2.fs/fuse-ext2.util
-	
-	local mountFromFolderPath
-	local mountToFolderPath
-	local recursiveMount
-	local count=0
-	while IFS=':' read -r mountFromFolderPath mountToFolderPath recursiveMount
-	do
-		if [ -z "$mountFromFolderPath" ]; then
-			continue
-		fi
-		
-		# --chown, but requires rsync 3.1.0 and root permission.
-		
-		local toFolder="$mountToFolderPath"
-		
-		sudo -p "Password for user '%u' to rsync as 0:0: " rsync --quiet --recursive --links --perms --times --executability --sparse --delete --delete-excluded --delete-after --numeric-ids --chown=0:0 --chmod=D0700,Fg-rwx,Fo-rwx "$mountFromFolderPath"/ 
-		
-		set -- "$@" \
-			-fsdev local,id="id${count}",path="$mountFromFolderPath",security_model=none \
-			-device virtio-9p-pci,fsdev="id${count}",mount_tag="tag${count}"
-		
-		count=$((count + 1))
-	done <<-EOF
-		${reproducible_mount}
-	EOF
+	:
 }
 
 depends cat chmod cpio gzip
 reproducible_qemu_makeInitFile()
 {
 	local initFilePath="$reproducible_chrootFolderPath"/init
-	{
-		cat <<-'EOF'
-			#!/bin/sh
+	
+	cat >"$initFilePath" <<-EOF
+		#!/bin/sh
 
-			set -e
-			set -f
-			set -u
+		set -e
+		set -f
+		set -u
 
-			export PATH='/usr/sbin:/sbin:/usr/bin:/bin'
-			export LOGNAME='currentuser'
-			export USER='currentuser'
-			export HOME='/home/currentuser'
-			export LANG=C.UTF-8
-			export LANGUAGE=en_US:en
-			
-			busybox mount -t proc -o noexec,nosuid,nodev proc /proc
-			busybox mount -t sysfs -o noexec,nosuid,nodev sysfs /sys
-			busybox mount -t devtmpfs -o exec,nosuid,mode=0755,size=2M devtmpfs /dev
-			busybox mount -t devpts -o noexec,nosuid,mode=0620,gid=5 devpts /dev/pts
-			busybox mount -t tmpfs -o noexec,nosuid,nodev shm /dev/shm
-		EOF
+		export PATH='/usr/sbin:/sbin:/usr/bin:/bin'
+		export LOGNAME='currentuser'
+		export USER='currentuser'
+		export HOME='/home/currentuser'
+		export LANG=C.UTF-8
+		export LANGUAGE=en_US:en
 		
-		local mountFromFolderPath
-		local mountToFolderPath
-		local recursiveMount
-		local count=0
-		while IFS=':' read -r mountFromFolderPath mountToFolderPath recursiveMount
-		do
-			if [ -z "$mountFromFolderPath" ]; then
-				continue
-			fi
-			printf 'busybox mkdir -m 0755 -p %s\n' "$mountToFolderPath"
-			printf 'busybox mount -t 9p -o trans=virtio tag%s %s/ -oversion=9p2000.L,posixacl,cache=loose\n' "$count" "$mountToFolderPath"
-	
-			count=$((count + 1))
-		done <<-EOF
-			${reproducible_mount}
-		EOF
-	
-		cat <<-'EOF'
-			exec busybox su \
-				-p \
-				-s /bin/sh \
-				-c 'exec /su-command' \
-				currentuser
-		EOF
-	} >"$initFilePath"
+		busybox mount -t proc -o noexec,nosuid,nodev proc /proc
+		busybox mount -t sysfs -o noexec,nosuid,nodev sysfs /sys
+		busybox mount -t devtmpfs -o exec,nosuid,mode=0755,size=2M devtmpfs /dev
+		busybox mount -t devpts -o noexec,nosuid,mode=0620,gid=5 devpts /dev/pts
+		busybox mount -t tmpfs -o noexec,nosuid,nodev shm /dev/shm
+		
+		# TODO: Load kernel modules; extract modloop.
+		busybox modprobe 
+		
+		
+		# TODO: Use an overlay mount to mount the disk OVER the initramfs; this is the simplest way.
+		
+		# overlayfs # squashfs
+		
+		
+		# TODO: Need to use either pivot_root or switch_root
+		busybox mkdir -m 0700 -p /disk${reproducible_qemu_disk0Index}-root
+		busybox mount -t ext2 UUID=${reproducible_qemu_disk0Uuid} /disk${reproducible_qemu_disk0Index}-root
+		cd /disk${reproducible_qemu_disk0Index}-root
+		
+		busybox mkdir initrd
+		busybox pivot_root . initrd
+		
+		# TODO: bin sbin etc are now under /initrd/bin etc
+		
+		# WON'T WORK!!!
+		exec busybox chroot . busybox su \
+			-p \
+			-s /bin/sh \
+			-c 'exec /su-command' \
+			currentuser \
+			 <dev/console >dev/console 2>&1
+	EOF
 	
 	chmod 0700 "$initFilePath"
 }
 
-depends find cpio gzip
+reproducible_qemu_linuxKernelVersion()
+{
+	:
+}
+
+depends rm mkdir ls head
+depends grep sort cp
+reproducible_qemu_parseKernelModuleDependencies()
+{	
+	if reproducible_cachedVersion "$reproducible_qemu_kernelModulesFolderPath"; then
+		return 0
+	fi
+	
+	rm -rf "$reproducible_qemu_kernelModulesFolderPath"
+	mkdir -m 0700 -p "$reproducible_qemu_kernelModulesFolderPath"
+	
+		local modulesFolderPath="$reproducible_extractedInitramfsFolderPath"/lib/modules
+		cd "$reproducible_extractedInitramfsFolderPath"/lib/modules 1>/dev/null 2>/dev/null
+			local linuxKernelVersion="$(ls -1 | head -n 1)"
+		cd - 1>/dev/null 2>/dev/null
+		
+		
+		xxxxx
+		
+		
+		
+		
+		
+	
+	cp -f "$reproducible_versionFilePath" "$reproducible_qemu_kernelModulesFolderPath"
+	
+	# TODO: Also add etc/modprobe.d/
+	
+	# TODO: Also add lib/modules/"$version" subset? Or just rsync the lot?
+	
+	#mkdir -m 0700 -p "$chrootExtraFolderPath"/lib/modules
+	
+	
+	local moduleDependenciesFilePath="$modulesFolderPath"/"$version"/modules.dep
+	
+	{
+		local moduleWeWant
+		for moduleWeWant in kernel/fs/squashfs/squashfs.ko
+		do
+			grep -m 1 '^'"$modulesWeWant"': ' "$moduleDependenciesFilePath"
+		done
+	} | sort >"$reproducible_temporaryFolderPath"/modules.dep
+	
+	local moduleRelativePath
+	local junk
+	while IFS=':' read -r moduleRelativePath junk
+	do
+		local parentFolderPath="$(dirname "$moduleRelativePath")"
+		mkdir -m 0700 -p "$X"/"$parentFolderPath"
+		cp "$moduleRelativePath" "$X"/"$moduleRelativePath"
+	done <"$reproducible_temporaryFolderPath"/modules.dep
+}
+
+depends rm find cpio gzip
 reproducible_qemu_createInitialRamdiskCpioArchive()
 {
 	rm -rf "$reproducible_qemu_initialRamdiskCpioArchiveFilePath"
 	
 	cd "$reproducible_chrootFolderPath" 1>/dev/null 2>/dev/null
-		# TODO: -R is not supported by busybox cpio.
 		find . | cpio -o -H 'newc' -R 0:0 2>/dev/null | gzip -c >"$reproducible_qemu_initialRamdiskCpioArchiveFilePath"
 	cd - 1>/dev/null 2>/dev/null
 }
 
+depends mkdir
+reproducible_qemu_createQemuFolderIfNeeded()
+{
+	mkdir -m 0700 -p "$reproducible_qemu_qemuFolderPath"
+}
+
+depends_provided_by_macports qemu-img mke2fs
+reproducible_qemu_createDisk0IfNeeded()
+{
+	if [ ! -f "$reproducible_qemu_disk0FilePath" ]; then
+		qemu-img create -f raw "$reproducible_qemu_disk0FilePath" "$reproducible_qemu_disk0Size" 1>/dev/null 2>/dev/null
+		mke2fs -b 1024 -j -L "$reproducible_qemu_disk0Name" -o Linux -q -t ext2 -U "$reproducible_qemu_disk0Uuid" -F "$reproducible_qemu_disk0FilePath"
+	fi
+}
+
+depends mkdir
+reproducible_qemu_createDisk0MountPathIfNeeded()
+{
+	mkdir -m 0700 -p "$reproducible_qemu_disk0MountFolderPath"
+}
+
+depends umount
+reproducible_qemu_mountDisk0AndUse()
+{
+	local callback="$1"
+	shift 1
+	
+	_reproducible_qemu_unmountDisk0()
+	{
+		set +e
+			umount -f "$reproducible_qemu_disk0MountFolderPath"
+		set -e
+	}
+	trap _reproducible_qemu_unmountDisk0 EXIT SIGTERM
+		
+		fuse-ext2 "$reproducible_qemu_disk0FilePath" "$reproducible_qemu_disk0MountFolderPath" -o rw+,force,allow_root,noappledouble,noapplexattr,volname="Reproducible QEMU Disk ${reproducible_qemu_disk0Index}"
+	
+			"$callback" "$@"
+		
+		_reproducible_qemu_unmountDisk0
+		
+	trap - EXIT SIGTERM
+}
+
+depends sudo
+depends_provided_by_macports rsync
+reproducible_qemu_createOrUpdateDisk0WithMounts()
+{
+	reproducible_qemu_createQemuFolderIfNeeded
+	
+	reproducible_qemu_createDisk0IfNeeded
+	
+	reproducible_qemu_createDisk0MountPathIfNeeded
+	
+	reproducible_qemu_mountDisk0AndUse
+
+	_reproducible_qemu_reproducible_qemu_createOrUpdateDisk0WithMounts_synchronizeMounts()
+	{
+		local mountFromFolderPath
+		local mountToFolderPath
+		local _recursiveMount
+		while IFS=':' read -r mountFromFolderPath mountToFolderPath _recursiveMount
+		do
+			if [ -z "$mountFromFolderPath" ]; then
+				continue
+			fi
+	
+			sudo -p "Password for user '%u' to rsync as 0:0: " rsync \
+				--quiet --recursive --links --perms --times --executability --sparse \
+				--delete --delete-excluded --delete-after \
+				--numeric-ids --chown=0:0 --chmod=D0700,Fg-rwx,Fo-rwx \
+				"$mountFromFolderPath"/ "${reproducible_qemu_disk0MountFolderPath}${mountToFolderPath}"/
+		done <<-EOF
+			${reproducible_mount}
+		EOF
+	}
+	reproducible_qemu_mountDisk0AndUse _reproducible_qemu_reproducible_qemu_createOrUpdateDisk0WithMounts_synchronizeMounts
+}
+
+depends_provided_by_macports qemu-system-x86_64
 reproducible_qemu_execute()
 {
 	# Attempts to exit QEMU on Linux kernel panic; see second comment at https://unix.stackexchange.com/questions/443017/can-i-make-qemu-exit-with-failure-on-kernel-panic for a better option if the kernel supports pvpanic.
@@ -271,27 +350,7 @@ reproducible_qemu_execute()
 		-append "root=/dev/$reproducible_qemu_disk0Name console=ttyS0 quiet kernel.panic=-1" \
 			-m "$reproducible_qemu_memorySize" \
 			-k en-us
-
-	local mountFromFolderPath
-	local mountToFolderPath
-	local recursiveMount
-	local count=0
-	while IFS=':' read -r mountFromFolderPath mountToFolderPath recursiveMount
-	do
-		if [ -z "$mountFromFolderPath" ]; then
-			continue
-		fi
-		
-		set -- "$@" \
-			-fsdev local,id="id${count}",path="$mountFromFolderPath",security_model=none \
-			-device virtio-9p-pci,fsdev="id${count}",mount_tag="tag${count}"
-		
-		count=$((count +1 ))
-	done <<-EOF
-		${reproducible_mount}
-	EOF
-	
-	exec "$reproducible_qemu_compileForMacos_installPath"/bin/qemu-system-x86_64 "$@"
+	exec qemu-system-x86_64 "$@"
 }
 
 reproducible_qemu_commandLineArguments()
@@ -400,7 +459,11 @@ reproducible_qemu_main()
 	local reproducible_qemu_disk0Size='1G'
 	local reproducible_qemu_disk0MountFolderPath
 	local reproducible_qemu_disk0FilePath
-
+	
+	local reproducible_qemu_kernelModulesFolderPath="$reproducible_outputFolderPath"/kernel-modules
+	local reproducible_qemu_qemuFolderPath="$reproducible_outputFolderPath"/qemu
+	local reproducible_qemu_disk0FilePath="$reproducible_qemu_qemuFolderPath"/disk${reproducible_qemu_disk0Index}.ext2.raw.img
+	local reproducible_qemu_disk0MountFolderPath="$reproducible_qemu_qemuFolderPath"/disk0
 	_callback()
 	{
 		reproducible_qemu_createOrUpdateDisk0WithMounts
