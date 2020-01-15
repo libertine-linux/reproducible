@@ -196,6 +196,20 @@ reproducible_setEnvironmentVariables()
 		fail $EX_CONFIG "The configuration file '$reproducible_busyboxStaticBinariesFilePath' is not a readable file with content"
 	fi
 
+	reproducible_kernelModulesFilePath="$reproducible_configurationFolderPath"/alpine-linux.kernel-modules
+	if [ ! -e "$reproducible_kernelModulesFilePath" ]; then
+		fail $EX_CONFIG "The configuration file '$reproducible_kernelModulesFilePath' does not exist"
+	fi
+	if [ ! -f "$reproducible_kernelModulesFilePath" ]; then
+		fail $EX_CONFIG "The configuration file '$reproducible_kernelModulesFilePath' is not a file"
+	fi
+	if [ ! -r "$reproducible_kernelModulesFilePath" ]; then
+		fail $EX_CONFIG "The configuration file '$reproducible_kernelModulesFilePath' is not a readable file"
+	fi
+	if [ ! -s "$reproducible_kernelModulesFilePath" ]; then
+		fail $EX_CONFIG "The configuration file '$reproducible_kernelModulesFilePath' is not a readable file with content"
+	fi
+
 	reproducible_mirrorFolderPath="$reproducible_outputFolderPath"/mirror
 	reproducible_mirrorVersionFilePath="$reproducible_mirrorFolderPath"/.alpine-linux.version
 
@@ -213,7 +227,12 @@ reproducible_setEnvironmentVariables()
 
 	reproducible_extractedInitramfsFolderPath="$reproducible_outputFolderPath"/extracted-initramfs
 	reproducible_extractedInitramfsVersionFilePath="$reproducible_extractedInitramfsFolderPath"/.alpine-linux.version
-
+	
+	reproducible_qemu_extractedModloopFolderPath="$reproducible_outputFolderPath"/extracted-modloop
+	reproducible_qemu_qemuFolderPath="$reproducible_outputFolderPath"/qemu
+	reproducible_qemu_kernelModulesFolderPath="$reproducible_qemu_qemuFolderPath"/kernel-modules
+	reproducible_extractedKernelModulesFilePath="$reproducible_qemu_kernelModulesFolderPath"/.alpine-linux.kernel-modules
+	
 	reproducible_mirror=https://alpine.global.ssl.fastly.net/alpine
 
 	IFS=$'\t'' ' read -r reproducible_majorVersion reproducible_minorVersion reproducible_revisionVersion <"$reproducible_versionFilePath"
@@ -222,6 +241,7 @@ reproducible_setEnvironmentVariables()
 	reproducible_versionMirror="${reproducible_mirror}/v${reproducible_majorVersion}.${reproducible_minorVersion}"
 	reproducible_releasesMirror="$reproducible_versionMirror"/releases/"$reproducible_architecture"
 	
+	reproducible_chrootTemplateFolderPath="$reproducible_outputFolderPath"/chroot-template
 	reproducible_chrootFolderPath="$reproducible_outputFolderPath"/chroot
 }
 
@@ -282,76 +302,33 @@ reproducible_cachedBusyboxStaticBinaries()
 	return 1
 }
 
-depends mkdir rsync
-reproducible_createChroot_copyExtract()
+depends cmp
+reproducible_cachedKernelModules()
 {
-	mkdir -m 0700 -p "$reproducible_chrootFolderPath"
-	rsync --archive --delete-after --delete-excluded --force --exclude '/.alpine-linux.*' "$reproducible_extractedPackagesFolderPath"/ "$reproducible_chrootFolderPath"/
-}
+	local folderPath="$1"
+	local kernelModulesFilePath="$folderPath"/.alpine-linux.kernel-modules
 
-depends mkdir
-reproducible_createChroot_makeCoreFolders()
-{
-	local folder
-	for folder in dev etc home mnt opt proc root run sys tmp usr/local usr/local/bin usr/local/sbin var/cache var/run var/tmp
-	do
-		mkdir -m 0700 -p "$reproducible_chrootFolderPath"/"$folder"
-	done
-}
-
-depends id mkdir
-reproducible_createChroot_createBarebonesEtcPasswd()
-{
-	local currentUid="$(id -u)"
-	local currentGid="$(id -g)"
-
-	{
-		_reproducible_enter_chroot_createChroot_createBarebonesEtcPasswd_entry()
-		{
-			local user="$1"
-			local uid="$2"
-			local gid="$3"
-			local homeFolderPath="$4"
-			local shellFilePath="$5"
-			local gecos="$user"
-			printf '%s:x:%s:%s:%s:%s:%s\n' "$user" "$uid" "$gid" "$gecos" "$homeFolderPath" "$shellFilePath"
-		}
-
-		_reproducible_enter_chroot_createChroot_createBarebonesEtcPasswd_entry root 0 0 /root /bin/sh
-
-		if [ $currentUid -ne 0 ]; then
-			if [ $currentGid -ne 0 ]; then
-				local user='currentuser'
-				_reproducible_enter_chroot_createChroot_createBarebonesEtcPasswd_entry "$user" "$currentUid" "$currentGid" /home/"$user" /bin/sh
-				mkdir -m 0700 -p "$reproducible_chrootFolderPath"/home/"$user"
-			fi
+	if [ -s "$reproducible_kernelModulesFilePath" ]; then
+		if cmp -s "$kernelModulesFilePath" "$reproducible_kernelModulesFilePath"; then
+			return 0
 		fi
+	fi
 
-	} >"$reproducible_chrootFolderPath"/etc/passwd
+	return 1
 }
 
-depends ln
-reproducible_createChroot_createEtcMtab()
-{
-	ln -s /proc/mounts "$reproducible_chrootFolderPath"/etc/mtab
-}
-
-depends cp rm mkdir
+depends mkdir rsync
 reproducible_createChroot()
 {
-	reproducible_createChroot_copyExtract
-
-	reproducible_createChroot_makeCoreFolders
-
-	reproducible_createChroot_createBarebonesEtcPasswd
-	
-	reproducible_createChroot_createEtcMtab
+	mkdir -m 0700 -p "$reproducible_chrootFolderPath"
+	rsync --archive --delete --delete-after --delete-excluded --exclude='/*.alpine-linux.*' "$reproducible_chrootTemplateFolderPath"/ "$reproducible_chrootFolderPath"/
 }
 
 depends cat chmod
 reproducible_createSuCommandToRunAsCurrentUser()
 {
 	shift $reproducible_positionalArgumentsStartAt
+	
 	{
 		cat <<-EOF
 			#!/bin/sh
@@ -373,6 +350,7 @@ reproducible_createSuCommandToRunAsCurrentUser()
 		printf '\n'
 
 	} >"$reproducible_chrootFolderPath"/su-command
+	
 	chmod 0700 "$reproducible_chrootFolderPath"/su-command
 }
 
@@ -388,20 +366,18 @@ reproducible_macports()
 reproducible_runNotAsRoot()
 {
 	local callback="$1"
-	shift 1
+	local folder="$2"
+	shift 2
 	
-	local reRunAsRoot=true
 	if [ -n "${SUDO_UID+isset}" ]; then
-		reRunAsRoot=false
+		return 0
 	fi
 	
-	if $reRunAsRoot; then
-		"$(pwd)"/support/alpine-linux-download --configuration "$reproducible_configurationFolderPath" --output "$reproducible_outputFolderPath"
-		reproducible_createChroot
-		reproducible_createSuCommandToRunAsCurrentUser "$@"
+	"$(pwd)"/support/alpine-linux-download --configuration "$reproducible_configurationFolderPath" --output "$reproducible_outputFolderPath"
+	reproducible_createChroot
+	reproducible_createSuCommandToRunAsCurrentUser "$@"
 		
-		${callback}
-		
-		environment_reRunAsRootIfRequired "$@"
-	fi
+	${callback}
+	
+	environment_reRunAsRootIfRequired "$folder" "$@"
 }

@@ -223,7 +223,7 @@ If the output folder path is not provided, it defaults to program_location/outpu
 The mount argument is a triplet of from folder path and to folder path and true/false for recursive mounting. It can be repeated.
 from folder path and to folder path should not contain colons or new lines.
 "
-	local reproducible_mount=""
+	reproducible_mount=""
 	_additionalArgumentsCallback()
 	{
 		case "$key" in
@@ -274,6 +274,7 @@ reproducible_chroot_main()
 	local reproducible_positionalArgumentsStartAt
 	local reproducible_configurationFolderPath
 	local reproducible_outputFolderPath
+	local reproducible_mount
 	reproducible_chroot_commandLineArguments "$@"
 	
 	reproducible_validateCommandLineArguments
@@ -294,6 +295,11 @@ reproducible_chroot_main()
 	local reproducible_extractedPackagesBusyboxStaticBinariesFilePath
 	local reproducible_extractedInitramfsFolderPath
 	local reproducible_extractedInitramfsVersionFilePath
+	local reproducible_qemu_extractedModloopFolderPath
+	local reproducible_qemu_qemuFolderPath
+	local reproducible_qemu_kernelModulesFolderPath
+	local reproducible_kernelModulesFilePath
+	local reproducible_extractedKernelModulesFilePath
 	local reproducible_majorVersion
 	local reproducible_minorVersion
 	local reproducible_revisionVersion
@@ -310,7 +316,7 @@ reproducible_chroot_main()
 	{
 		:
 	}
-	reproducible_runNotAsRoot _callback "$@"
+	reproducible_runNotAsRoot _callback support "$@"
 
 	reproducible_chroot_mountRunAndUnmount
 }

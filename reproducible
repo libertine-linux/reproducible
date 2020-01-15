@@ -167,7 +167,7 @@ If the output folder path is not provided, it defaults to program_location/outpu
 The mount argument is a triplet of from folder path and to folder path and true/false for recursive mounting. It can be repeated.
 from folder path and to folder path should not contain colons or new lines.
 "
-	local reproducible_mount=""
+	reproducible_mount=""
 	_additionalArgumentsCallback()
 	{
 		case "$key" in
@@ -218,6 +218,7 @@ reproducible_main()
 	local reproducible_positionalArgumentsStartAt
 	local reproducible_configurationFolderPath
 	local reproducible_outputFolderPath
+	local reproducible_mount
 	reproducible_commandLineArguments "$@"
 	
 	reproducible_chooseChrootOrQemu "$@"

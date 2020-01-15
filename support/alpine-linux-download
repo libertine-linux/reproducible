@@ -172,11 +172,12 @@ alpine_linux_download_prepare()
 		fi
 	}
 
-	_alpine_linux_download_prepare_rebuild "$reproducible_extractedInitramfsFolderPath" false false
-	_alpine_linux_download_prepare_rebuild "$reproducible_extractedPackagesFolderPath" true true
-	_alpine_linux_download_prepare_rebuild "$reproducible_packagesFolderPath" true false
 	_alpine_linux_download_prepare_rebuild "$reproducible_indexFolderPath" false false
 	_alpine_linux_download_prepare_rebuild "$reproducible_mirrorFolderPath" false false
+	_alpine_linux_download_prepare_rebuild "$reproducible_extractedInitramfsFolderPath" false false
+	_alpine_linux_download_prepare_rebuild "$reproducible_packagesFolderPath" true false
+	_alpine_linux_download_prepare_rebuild "$reproducible_extractedPackagesFolderPath" true false
+	_alpine_linux_download_prepare_rebuild "$reproducible_chrootTemplateFolderPath" true true
 }
 
 depends mv
@@ -658,7 +659,7 @@ alpine_linux_download_downloadApkPackages()
 	cp "$reproducible_packagesFilePath" "$reproducible_packagesPackagesFilePath"
 }
 
-depends rm mkdir ln chmod cp
+depends rm cp
 alpine_linux_download_extractApks()
 {
 	if reproducible_cachedPackages "$reproducible_extractedPackagesFolderPath"; then
@@ -680,7 +681,41 @@ alpine_linux_download_extractApks()
 		rm -rf "$reproducible_extractedPackagesFolderPath"/.post-* "$reproducible_extractedPackagesFolderPath"/.trigger
 	set -f
 
-	# Assumes busybox-static is one of the packages.
+	cp "$reproducible_versionFilePath" "$reproducible_extractedPackagesVersionFilePath"
+	cp "$reproducible_packagesFilePath" "$reproducible_extractedPackagesPackagesFilePath"
+}
+
+
+depends rm mkdir gunzip cpio
+alpine_linux_download_extractInitramfs()
+{
+	if reproducible_cachedVersion "$reproducible_extractedInitramfsVersionFilePath"; then
+		return 0
+	fi
+	
+	rm -rf "$reproducible_extractedInitramfsFolderPath"
+	mkdir -m 0700 -p "$reproducible_extractedInitramfsFolderPath"
+	
+	cd "$reproducible_extractedInitramfsFolderPath" 1>/dev/null 2>/dev/null
+	
+		gunzip -c -k "$reproducible_mirrorFolderPath"/initramfs | cpio -i 2>/dev/null
+	
+	cd - 1>/dev/null 2>/dev/null
+
+	cp "$reproducible_versionFilePath" "$reproducible_extractedInitramfsVersionFilePath"
+}
+
+depends mkdir rsync
+alpine_linux_download_createChrootTemplate_copyExtract()
+{
+	mkdir -m 0700 -p "$reproducible_chrootTemplateFolderPath"
+	rsync --archive --delete-after --delete-excluded --force "$reproducible_extractedPackagesFolderPath"/ "$reproducible_chrootTemplateFolderPath"/
+}
+
+# Assumes busybox-static is one of the packages.
+depends mkdir ln chmod cp
+alpine_linux_download_createChrootTemplate_staticallyLinkBusybox()
+{
 	local binary
 	local folder
 	local tab='	'
@@ -704,38 +739,83 @@ alpine_linux_download_extractApks()
 			;;
 
 		esac
-		if [ ! -d "${reproducible_extractedPackagesFolderPath}${folder}" ]; then
-			mkdir -m 0700 -p "${reproducible_extractedPackagesFolderPath}${folder}"
+		if [ ! -d "${reproducible_chrootTemplateFolderPath}${folder}" ]; then
+			mkdir -m 0700 -p "${reproducible_chrootTemplateFolderPath}${folder}"
 		fi
-		ln -s "$symlinkSource" "${reproducible_extractedPackagesFolderPath}${folder}/${binary}"
+		ln -s "$symlinkSource" "${reproducible_chrootTemplateFolderPath}${folder}/${binary}"
 
 	done <"$reproducible_busyboxStaticBinariesFilePath"
 
 	# Adjust permissions.
-	chmod -R g-rwx,o-rwx "$reproducible_extractedPackagesFolderPath"
-
-	cp "$reproducible_versionFilePath" "$reproducible_extractedPackagesVersionFilePath"
-	cp "$reproducible_packagesFilePath" "$reproducible_extractedPackagesPackagesFilePath"
-	cp "$reproducible_busyboxStaticBinariesFilePath" "$reproducible_extractedPackagesBusyboxStaticBinariesFilePath"
+	chmod -R g-rwx,o-rwx "$reproducible_chrootTemplateFolderPath"
 }
 
-depends rm mkdir gunzip cpio
-alpine_linux_download_extractInitramfs()
+depends mkdir
+alpine_linux_download_createChrootTemplate_makeCoreFolders()
 {
-	if reproducible_cachedVersion "$reproducible_extractedInitramfsVersionFilePath"; then
+	local folder
+	for folder in bin dev etc home lib mnt opt proc root run sbin sys tmp usr/bin usr/lib usr/sbin var/cache var/run var/tmp
+	do
+		mkdir -m 0700 -p "$reproducible_chrootTemplateFolderPath"/"$folder"
+	done
+}
+
+depends id mkdir
+alpine_linux_download_createChrootTemplate_createBarebonesEtcPasswd()
+{
+	local currentUid="$(id -u)"
+	local currentGid="$(id -g)"
+
+	{
+		_alpine_linux_download_createChrootTemplate_createBarebonesEtcPasswd_entry()
+		{
+			local user="$1"
+			local uid="$2"
+			local gid="$3"
+			local homeFolderPath="$4"
+			local shellFilePath="$5"
+			local gecos="$user"
+			printf '%s:x:%s:%s:%s:%s:%s\n' "$user" "$uid" "$gid" "$gecos" "$homeFolderPath" "$shellFilePath"
+		}
+
+		_alpine_linux_download_createChrootTemplate_createBarebonesEtcPasswd_entry root 0 0 /root /bin/sh
+
+		if [ $currentUid -ne 0 ]; then
+			if [ $currentGid -ne 0 ]; then
+				local user='currentuser'
+				_alpine_linux_download_createChrootTemplate_createBarebonesEtcPasswd_entry "$user" "$currentUid" "$currentGid" /home/"$user" /bin/sh
+				mkdir -m 0700 -p "$reproducible_chrootTemplateFolderPath"/home/"$user"
+			fi
+		fi
+
+	} >"$reproducible_chrootTemplateFolderPath"/etc/passwd
+}
+
+depends ln
+alpine_linux_download_createChrootTemplate_createEtcMtab()
+{
+	ln -s /proc/mounts "$reproducible_chrootTemplateFolderPath"/etc/mtab
+}
+
+alpine_linux_download_createChrootTemplate()
+{
+	if reproducible_cachedPackages "$reproducible_chrootTemplateFolderPath"; then
 		return 0
 	fi
 	
-	rm -rf "$reproducible_extractedInitramfsFolderPath"
-	mkdir -m 0700 -p "$reproducible_extractedInitramfsFolderPath"
+		alpine_linux_download_createChrootTemplate_copyExtract
 	
-	cd "$reproducible_extractedInitramfsFolderPath" 1>/dev/null 2>/dev/null
+		alpine_linux_download_createChrootTemplate_staticallyLinkBusybox
 	
-		gunzip -c -k "$reproducible_mirrorFolderPath"/initramfs | cpio -i 2>/dev/null
+		alpine_linux_download_createChrootTemplate_makeCoreFolders
 	
-	cd - 1>/dev/null 2>/dev/null
+		alpine_linux_download_createChrootTemplate_createBarebonesEtcPasswd
+	
+		alpine_linux_download_createChrootTemplate_createEtcMtab
 
-	cp "$reproducible_versionFilePath" "$reproducible_extractedInitramfsVersionFilePath"
+	cp "$reproducible_versionFilePath" "$reproducible_chrootTemplateFolderPath"/.alpine-linux.version
+	cp "$reproducible_packagesFilePath" "$reproducible_chrootTemplateFolderPath"/.alpine-linux.packages
+	cp "$reproducible_busyboxStaticBinariesFilePath" "$reproducible_chrootTemplateFolderPath"/.alpine-linux.busybox-static-binaries
 }
 
 depends rm cp
@@ -787,6 +867,7 @@ If the output folder path is not provided, it defaults to program_location/outpu
 	local reproducible_extractedPackagesBusyboxStaticBinariesFilePath
 	local reproducible_extractedInitramfsFolderPath
 	local reproducible_extractedInitramfsVersionFilePath
+	local reproducible_kernelModulesFilePath
 	local reproducible_majorVersion
 	local reproducible_minorVersion
 	local reproducible_revisionVersion
@@ -810,7 +891,9 @@ If the output folder path is not provided, it defaults to program_location/outpu
 	alpine_linux_download_downloadApkPackages
 
 	alpine_linux_download_extractApks
-
+	
+	alpine_linux_download_createChrootTemplate
+	
 	rm -rf "$reproducible_temporaryFolderPath"
 }
 
