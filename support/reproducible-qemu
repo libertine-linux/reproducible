@@ -241,15 +241,12 @@ reproducible_qemu_makeInitFileInInitialRamdisk()
 			# HOME, TERM and SHLVL are already set and available to export.
 			# PATH, HOSTNAME, IFS, OPTIND, PS1, PS2, PS4 and PWD are non-exported variables available.
 			export PATH='/usr/sbin:/sbin:/usr/bin:/bin'
-			export LOGNAME='currentuser'
-			export USER='currentuser'
-			export HOME='/home/currentuser'
+			export LOGNAME='root'
+			export USER='root'
+			export HOME='/root'
 			export LANG=C.UTF-8
 			export LANGUAGE=en_US:en
-		EOF
-		sed 's,^,busybox insmod /lib/modules/,g' "$reproducible_qemu_modulesToUseInLoadOrderFilePath"
-		cat <<-'EOF'
-		
+			
 			busybox mount -t proc -o noexec,nosuid,nodev proc /proc
 			busybox mount -t sysfs -o noexec,nosuid,nodev sysfs /sys
 			busybox mount -t devtmpfs -o exec,nosuid,mode=0700,size=2M devtmpfs /dev
@@ -276,9 +273,11 @@ reproducible_qemu_makeInitFileInInitialRamdisk()
 			busybox mkdir -m 0700 -p /dev/shm
 			busybox mount -t tmpfs -o noexec,nosuid,nodev shm /dev/shm
 			
-			busybox rm -rf /lib/modules
 		EOF
+		sed 's,^,busybox insmod /lib/modules/,g' "$reproducible_qemu_modulesToUseInLoadOrderFilePath"
 		cat <<-EOF
+			busybox rm -rf /lib/modules
+			
 			diskIndex="${reproducible_qemu_disk0Index}"
 			diskUuid="${reproducible_qemu_disk0Uuid}"
 		EOF
