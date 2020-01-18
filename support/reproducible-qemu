@@ -252,9 +252,27 @@ reproducible_qemu_makeInitFileInInitialRamdisk()
 		
 			busybox mount -t proc -o noexec,nosuid,nodev proc /proc
 			busybox mount -t sysfs -o noexec,nosuid,nodev sysfs /sys
-			busybox mount -t devtmpfs -o exec,nosuid,mode=0755,size=2M devtmpfs /dev
+			busybox mount -t devtmpfs -o exec,nosuid,mode=0700,size=2M devtmpfs /dev
+			
+			exit_qemu()
+			{
+				local exitCode=$?
+			
+				if [ $exitCode -eq 0 ]; then
+					busybox poweroff -f
+				fi
+			
+				# Uses QEMU's ISA debug exit device to return an exit code to the invoking process.
+				# Choice of seek and count correspond to hexadecimal values in option `-device isa-debug-exit,iobase=0xf4,iosize=0x01` passed to QEMU; see https://docs.rs/qemu-exit/0.1.0/qemu_exit/
+				if [ $exitCode -gt 255 ]; then
+					exitCode=255
+				fi
+				printf \\"$(printf '%03o' "$exitCode")" | busybox dd of=/dev/port bs=1 seek=244 count=1 status=noxfer
+			}
+			trap exit_qemu EXIT SIGTERM SIGINT SIGHUP
+			
 			busybox mkdir -m 0700 -p /dev/pts
-			busybox mount -t devpts -o noexec,nosuid,mode=0620,gid=5 devpts /dev/pts
+			busybox mount -t devpts -o noexec,nosuid,mode=0600,gid=0 devpts /dev/pts
 			busybox mkdir -m 0700 -p /dev/shm
 			busybox mount -t tmpfs -o noexec,nosuid,nodev shm /dev/shm
 			
@@ -287,22 +305,8 @@ reproducible_qemu_makeInitFileInInitialRamdisk()
 				done
 				set -f
 			cd - 1>/dev/null 2>/dev/null
-			
-			set +e
-				/su-command
-				exitCode=$?
-			set -e
-			
-			if [ $exitCode -eq 0 ]; then
-				busybox poweroff -f
-			fi
-			
-			# Uses QEMU's ISA debug exit device to return an exit code to the invoking process.
-			# Choice of seek and count correspond to hexadecimal values in option `-device isa-debug-exit,iobase=0xf4,iosize=0x01` passed to QEMU; see https://docs.rs/qemu-exit/0.1.0/qemu_exit/
-			if [ $exitCode -gt 255 ]; then
-				exitCode=255
-			fi
-			printf \\"$(printf '%03o' "$exitCode")" | busybox dd of=/dev/port bs=1 seek=244 count=1 status=noxfer
+
+			/su-command
 		EOF
 	} >"$initFilePath"
 	
