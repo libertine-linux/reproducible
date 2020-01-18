@@ -290,9 +290,19 @@ reproducible_qemu_makeInitFileInInitialRamdisk()
 			
 			set +e
 				/su-command
+				exitCode=$?
 			set -e
-				
-			busybox poweroff -f
+			
+			if [ $exitCode -eq 0 ]; then
+				busybox poweroff -f
+			fi
+			
+			# Uses QEMU's ISA debug exit device to return an exit code to the invoking process.
+			# Choice of seek and count correspond to hexadecimal values in option `-device isa-debug-exit,iobase=0xf4,iosize=0x01` passed to QEMU; see https://docs.rs/qemu-exit/0.1.0/qemu_exit/
+			if [ $exitCode -gt 255 ]; then
+				exitCode=255
+			fi
+			printf \\"$(printf '%03o' "$exitCode")" | busybox dd of=/dev/port bs=1 seek=244 count=1 status=noxfer
 		EOF
 	} >"$initFilePath"
 	
@@ -413,10 +423,11 @@ reproducible_qemu_execute()
 		-no-reboot \
 		-nographic \
 		-kernel "$reproducible_mirrorFolderPath"/vmlinuz \
-		-append "root=/dev/$reproducible_qemu_disk0Name console=ttyS0 tsc=unstable kernel.panic=1 quiet" \
+		-append "root=/dev/$reproducible_qemu_disk0Name console=ttyS0 tsc=unstable kernel.panic=1 quiet loglevel=0" \
 		-initrd "$reproducible_qemu_initialRamdiskCpioArchiveFilePath" \
 		-drive file="$reproducible_qemu_disk0FilePath",index="$reproducible_qemu_disk0Index",media=disk,format=raw,snapshot=off \
 			-machine pc-q35-4.1 \
+			-device isa-debug-exit,iobase=0xf4,iosize=0x01 \
 			-m "$reproducible_qemu_memorySize" \
 			-k en-us
 	
