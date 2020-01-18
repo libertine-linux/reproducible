@@ -233,19 +233,22 @@ reproducible_qemu_makeInitFileInInitialRamdisk()
 	{
 		cat <<-'EOF'
 			#!/bin/sh
-
+			
 			set -e
 			set -f
 			set -u
-
-			# TODO: Does the kernel set any other initial environment variables?
-
+			
+			# HOME, TERM and SHLVL are already set and available to export.
+			# PATH, HOSTNAME, IFS, OPTIND, PS1, PS2, PS4 and PWD are non-exported variables available.
 			export PATH='/usr/sbin:/sbin:/usr/bin:/bin'
 			export LOGNAME='currentuser'
 			export USER='currentuser'
 			export HOME='/home/currentuser'
 			export LANG=C.UTF-8
 			export LANGUAGE=en_US:en
+		EOF
+		sed 's,^,busybox insmod /lib/modules/,g' "$reproducible_qemu_modulesToUseInLoadOrderFilePath"
+		cat <<-'EOF'
 		
 			busybox mount -t proc -o noexec,nosuid,nodev proc /proc
 			busybox mount -t sysfs -o noexec,nosuid,nodev sysfs /sys
@@ -255,26 +258,20 @@ reproducible_qemu_makeInitFileInInitialRamdisk()
 			busybox mkdir -m 0700 -p /dev/shm
 			busybox mount -t tmpfs -o noexec,nosuid,nodev shm /dev/shm
 			
-		EOF
-		
-		sed 's,^,busybox insmod /lib/modules/,g' "$reproducible_qemu_modulesToUseInLoadOrderFilePath"
-		
-		cat <<-EOF
 			busybox rm -rf /lib/modules
-			
+		EOF
+		cat <<-EOF
 			diskIndex="${reproducible_qemu_disk0Index}"
 			diskUuid="${reproducible_qemu_disk0Uuid}"
-			diskType="ext2"
 		EOF
-		
 		cat <<-'EOF'
-			diskMountPath=/mnt/"$diskIndex"
+			diskType="ext2"
+			diskMountPath=/mnt/"disk${diskIndex}"
 			busybox mkdir -m 0700 -p "$diskMountPath"
 			busybox mount -t "$diskType" UUID="$diskUuid" "$diskMountPath"
 			
 			cd "$diskMountPath" 1>/dev/null 2>/dev/null
 				set +f
-				local file
 				for file in *
 				do
 					set -f
@@ -282,7 +279,7 @@ reproducible_qemu_makeInitFileInInitialRamdisk()
 						continue
 					fi
 					
-					if [ -e /"$file "]; then
+					if [ -e /"$file" ]; then
 						busybox rm -rf /"$file"
 					fi
 					
@@ -291,11 +288,11 @@ reproducible_qemu_makeInitFileInInitialRamdisk()
 				set -f
 			cd - 1>/dev/null 2>/dev/null
 			
-			exec busybox su \
-				-p \
-				-s /bin/sh \
-				-c 'exec /su-command' \
-				currentuser
+			set +e
+				/su-command
+			set -e
+				
+			busybox poweroff -f
 		EOF
 	} >"$initFilePath"
 	
@@ -310,11 +307,11 @@ reproducible_qemu_copyKernelModulesToInitialRamdisk()
 		--exclude=load-order "$reproducible_qemu_kernelModulesFolderPath"/ "$reproducible_chrootFolderPath"/lib/modules/
 }
 
-depends mkdir rm find cpio gzip
+depends find cpio
 reproducible_qemu_createInitialRamdiskCpioArchive()
 {
 	cd "$reproducible_chrootFolderPath" 1>/dev/null 2>/dev/null
-		find . | cpio -o -H 'newc' -R 0:0 2>/dev/null | gzip -c >"$reproducible_qemu_initialRamdiskCpioArchiveFilePath"
+		find . | cpio -o -H 'newc' -R 0:0 2>/dev/null >"$reproducible_qemu_initialRamdiskCpioArchiveFilePath"
 	cd - 1>/dev/null 2>/dev/null
 }
 
@@ -389,18 +386,37 @@ reproducible_qemu_createOrUpdateDisk0WithMounts()
 	reproducible_qemu_mountDisk0AndUse _reproducible_qemu_reproducible_qemu_createOrUpdateDisk0WithMounts_synchronizeMounts
 }
 
+depends uname
 depends_provided_by_macports qemu-system-x86_64
 reproducible_qemu_execute()
 {
-	# Attempts to exit QEMU on Linux kernel panic; see second comment at https://unix.stackexchange.com/questions/443017/can-i-make-qemu-exit-with-failure-on-kernel-panic for a better option if the kernel supports pvpanic.
-	set -- \
-		-runas "$SUDO_UID":"$SUDO_GID" \
+	case "$(uname)" in
+		
+		Darwin)
+			set -- -accel hvf -accel hax -accel tcg
+		;;
+		
+		Linux)
+			set -- -accel kvm -cpu host
+		;;
+		
+		*)
+			set --
+		;;
+		
+	esac
+	
+	# -nodefaults
+	set -- "$@" \
+		-name "reproducible-qemu" \
+		-no-user-config \
 		-no-reboot \
 		-nographic \
 		-kernel "$reproducible_mirrorFolderPath"/vmlinuz \
-		-drive index="$reproducible_qemu_disk0Index",media=disk,snapshot=off,format=raw,file="$reproducible_qemu_disk0FilePath" \
+		-append "root=/dev/$reproducible_qemu_disk0Name console=ttyS0 tsc=unstable kernel.panic=1 quiet" \
 		-initrd "$reproducible_qemu_initialRamdiskCpioArchiveFilePath" \
-		-append "root=/dev/$reproducible_qemu_disk0Name console=ttyS0 quiet kernel.panic=-1" \
+		-drive file="$reproducible_qemu_disk0FilePath",index="$reproducible_qemu_disk0Index",media=disk,format=raw,snapshot=off \
+			-machine pc-q35-4.1 \
 			-m "$reproducible_qemu_memorySize" \
 			-k en-us
 	
@@ -511,30 +527,34 @@ reproducible_qemu_main()
 	reproducible_macports
 	
 	local reproducible_qemu_memorySize='1G'
-	local reproducible_qemu_initialRamdiskCpioArchiveFilePath="$reproducible_qemu_qemuFolderPath"/initramfs.cpio.gz
+	local reproducible_qemu_initialRamdiskCpioArchiveFilePath="$reproducible_qemu_qemuFolderPath"/initramfs.cpio
 	local reproducible_qemu_modulesToUseInLoadOrderFilePath="$reproducible_qemu_kernelModulesFolderPath"/load-order
 
 	local reproducible_qemu_disk0Uuid='d2c4a813-877e-44d1-8b3b-0b32139d7ee6'
 	local reproducible_qemu_disk0Index='0'
-	local reproducible_qemu_disk0Name='hda'
+	local reproducible_qemu_disk0Name='sda'
 	local reproducible_qemu_disk0Size='1G'
 	local reproducible_qemu_disk0MountFolderPath
 	local reproducible_qemu_disk0FilePath
 	
 	local reproducible_qemu_disk0FilePath="$reproducible_qemu_qemuFolderPath"/disk${reproducible_qemu_disk0Index}.ext2.raw.img
 	local reproducible_qemu_disk0MountFolderPath="$reproducible_qemu_qemuFolderPath"/disk0
-	_callback()
-	{
-		reproducible_qemu_extractModloop
-		reproducible_qemu_createQemuFolderIfNeeded
-		reproducible_qemu_parseModulesDepAndFindModules
-		reproducible_qemu_createOrUpdateDisk0WithMounts
-		
-		reproducible_qemu_makeInitFileInInitialRamdisk
-		reproducible_qemu_copyKernelModulesToInitialRamdisk
-		reproducible_qemu_createInitialRamdiskCpioArchive
-	}
-	reproducible_runNotAsRoot _callback support "$@"
+	
+	reproducible_commonChrootSetup "$@"
+	
+	reproducible_qemu_extractModloop
+	
+	reproducible_qemu_createQemuFolderIfNeeded
+	
+	reproducible_qemu_parseModulesDepAndFindModules
+	
+	reproducible_qemu_createOrUpdateDisk0WithMounts
+	
+	reproducible_qemu_makeInitFileInInitialRamdisk
+	
+	reproducible_qemu_copyKernelModulesToInitialRamdisk
+	
+	reproducible_qemu_createInitialRamdiskCpioArchive
 	
 	reproducible_qemu_execute
 }

@@ -363,6 +363,13 @@ reproducible_macports()
 	fi
 }
 
+reproducible_commonChrootSetup()
+{
+	"$(pwd)"/support/alpine-linux-download --configuration "$reproducible_configurationFolderPath" --output "$reproducible_outputFolderPath"
+	reproducible_createChroot
+	reproducible_createSuCommandToRunAsCurrentUser "$@"
+}
+
 reproducible_runNotAsRoot()
 {
 	local callback="$1"
@@ -373,9 +380,7 @@ reproducible_runNotAsRoot()
 		return 0
 	fi
 	
-	"$(pwd)"/support/alpine-linux-download --configuration "$reproducible_configurationFolderPath" --output "$reproducible_outputFolderPath"
-	reproducible_createChroot
-	reproducible_createSuCommandToRunAsCurrentUser "$@"
+	reproducible_commonChrootSetup "$@"
 		
 	${callback}
 	

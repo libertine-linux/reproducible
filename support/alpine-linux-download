@@ -185,8 +185,8 @@ alpine_linux_download_downloadNetbootFile()
 {
 	local fileName="$1"
 
-	# Can also be 'virt'
- 	local variant='vanilla'
+	# Can also be 'vanilla'
+ 	local variant="$alpine_linux_download_variant"
 	environment_download "$reproducible_temporaryFolderPath" "$reproducible_releasesMirror"/"$netbootFolderName"/"$fileName"-"$variant"
 	mv "$reproducible_temporaryFolderPath"/"$fileName"-"$variant" "$reproducible_mirrorFolderPath"/"$fileName"
 }
@@ -818,13 +818,8 @@ alpine_linux_download_createChrootTemplate()
 	cp "$reproducible_busyboxStaticBinariesFilePath" "$reproducible_chrootTemplateFolderPath"/.alpine-linux.busybox-static-binaries
 }
 
-depends rm cp
-alpine_linux_download_main()
+alpine_linux_download_commandLineArguments()
 {
-	cd "$(_program_path_find)"/.. 1>/dev/null 2>/dev/null
-
-	. "$(pwd)"/functions/reproducible.functions
-
 	local environment_parseCommandLineArguments_message="${program_name}:  Downloads and caches an Alpine Linux kernel, initramfs and packages for a basic known build environment.
 
 Usage: ${program_name} -h | --help
@@ -844,10 +839,23 @@ If the output folder path is not provided, it defaults to program_location/outpu
 			environment_parseCommandLineArguments_errorHelp "Positional arguments are not supported"
 		fi
 	}
+	reproducible_parseCommandLineArguments _additionalArgumentsCallback _positionalArgumentsCallback "$@"
+}
+
+depends rm cp
+alpine_linux_download_main()
+{
+	cd "$(_program_path_find)"/.. 1>/dev/null 2>/dev/null
+
+	. "$(pwd)"/functions/reproducible.functions
+	
+	# Can also be 'vanilla'.
+	local alpine_linux_download_variant='virt'
+
 	local reproducible_positionalArgumentsStartAt
 	local reproducible_configurationFolderPath
 	local reproducible_outputFolderPath
-	reproducible_parseCommandLineArguments _additionalArgumentsCallback _positionalArgumentsCallback "$@"
+	alpine_linux_download_commandLineArguments "$@"
 	
 	reproducible_validateCommandLineArguments
 
@@ -876,7 +884,7 @@ If the output folder path is not provided, it defaults to program_location/outpu
 	local reproducible_releasesMirror
 	local reproducible_architecture
 	reproducible_setEnvironmentVariables
-
+	
 	alpine_linux_download_prepare
 
 	local netbootFolderName

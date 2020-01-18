@@ -1,1 +1,2 @@
+kernel/drivers/scsi/sd_mod.ko
 kernel/fs/ext2/ext2.ko
