@@ -390,7 +390,7 @@ reproducible_qemu_createOrUpdateDisk0WithMounts()
 			sudo -p "Password for user '%u' to rsync as 0:0: " rsync \
 				--quiet --recursive --links --perms --times --executability --sparse \
 				--numeric-ids --chown=0:0 --chmod=D0700,Fg-rwx,Fo-rwx \
-				--delete --delete-excluded --delete-after /
+				--delete --delete-excluded --delete-after \
 				"$mountFromFolderPath"/ "${reproducible_qemu_disk0MountFolderPath}${mountToFolderPath}"/
 		done <<-EOF
 			${reproducible_mount}
@@ -547,7 +547,7 @@ reproducible_qemu_main()
 	local reproducible_qemu_disk0Uuid='d2c4a813-877e-44d1-8b3b-0b32139d7ee6'
 	local reproducible_qemu_disk0Index='0'
 	local reproducible_qemu_disk0Name='sda'
-	local reproducible_qemu_disk0Size='1G'
+	local reproducible_qemu_disk0Size='15G'
 	local reproducible_qemu_disk0MountFolderPath
 	local reproducible_qemu_disk0FilePath
 	
